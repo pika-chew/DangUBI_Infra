@@ -4,11 +4,13 @@
 # 인프라 상태 파일 — 민감 정보가 포함될 수 있음
 *.tfstate
 *.tfstate.*
-/.state-backups/
+.state-backups/
+.state_backups/
 
 # 로컬 변수 및 실행 계획
 *.tfvars
 *.tfvars.json
+!/terraform_aws/processing-image.auto.tfvars.json
 *.tfplan
 
 # Lambda 빌드 결과 및 Python 캐시
