@@ -30,7 +30,7 @@ ansible-playbook playbooks/jenkins-docker.yml
 # Docker 그룹 권한 적용을 위해 jenkins-1 VM에 다시 로그인
 ansible-playbook playbooks/jenkins.yml
 ```
-`jenkins-docker.yml`: Docker 공식 APT 저장소로 Docker Engine, Compose 플러그인 설치
+`jenkins-docker.yml`: Docker 공식 APT 저장소로 Docker Engine, Compose 플러그인 설치, arm64 이미지 빌드용 QEMU 에뮬레이션(`qemu-user-static`) 설치
 `jenkins.yml`: `/opt/jenkins`에서 커스텀 이미지를 빌드하고 Docker Compose로 Jenkins 실행
 
 - 접속: `http://<jenkins-1 주소>:8080`

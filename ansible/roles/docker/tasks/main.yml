@@ -61,3 +61,28 @@
 - name: Verify Docker Engine is available
   ansible.builtin.command: docker --version
   changed_when: false
+
+# Lambda(arm64) 이미지를 x86 호스트에서 빌드하기 위한 QEMU 에뮬레이션
+# 패키지가 systemd-binfmt로 부팅 때마다 등록하므로 재부팅해도 유지된다
+# F(fix-binary) 플래그로 등록되어 컨테이너 안에서도 에뮬레이터를 찾을 수 있다
+- name: Install arm64 emulation for cross-platform image builds
+  ansible.builtin.apt:
+    name: qemu-user-static
+    state: present
+  when: ansible_architecture != 'aarch64'
+
+- name: Read arm64 binfmt registration
+  ansible.builtin.slurp:
+    src: /proc/sys/fs/binfmt_misc/qemu-aarch64
+  register: qemu_aarch64_binfmt
+  when: ansible_architecture != 'aarch64'
+
+- name: Verify arm64 emulation is enabled with the fix-binary flag
+  ansible.builtin.assert:
+    that:
+      - "'enabled' in binfmt_text"
+      - "binfmt_text | regex_search('^flags: .*F', multiline=True)"
+    fail_msg: "qemu-aarch64 binfmt가 F 플래그로 등록되지 않았습니다. 'systemctl restart systemd-binfmt' 후 다시 실행하세요."
+  vars:
+    binfmt_text: "{{ qemu_aarch64_binfmt.content | b64decode }}"
+  when: ansible_architecture != 'aarch64'
