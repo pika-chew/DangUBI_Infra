@@ -16,6 +16,7 @@
     state: directory
     owner: '1000'
     group: '1000'
+    mode: '0700'
 
 - name: Get docker group GID
   ansible.builtin.getent:
@@ -46,9 +47,10 @@
 
 # compose(bake) 빌드는 network: host에 --allow=network.host 권한이 필요하므로 docker build로 따로 빌드
 # 빌드는 기본 브리지(MTU 1500)에서 돌아 플러그인 다운로드가 멈출 수 있음 → 호스트 NIC(MTU 1450) 사용
+# --pull: 재빌드 시 캐시된 베이스 이미지 대신 최신 LTS를 받음
 - name: Build Jenkins image
   ansible.builtin.command: >-
-    docker build --network host -t {{ jenkins_image }} {{ jenkins_dir }}
+    docker build --pull --network host -t {{ jenkins_image }} {{ jenkins_dir }}
   when: jenkins_image_info.images | length == 0
 
 - name: Start Jenkins
