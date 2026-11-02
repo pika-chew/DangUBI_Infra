@@ -1,0 +1,11 @@
+{
+  "clientId": "ubi-dev-vehicle-001",
+  "deviceId": "vehicle-001",
+  "endpoint": "a1xjy10g8jkimi-ats.iot.ap-northeast-2.amazonaws.com",
+  "thingName": "ubi-dev-vehicle-001",
+  "topic": "ubi/dev/vehicles/vehicle-001/telemetry",
+  "port": 8883,
+  "privateKeyPath": "private-key.pem",
+  "certificatePath": "certificate.pem",
+  "caPath": "AmazonRootCA1.pem"
+}

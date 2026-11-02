@@ -1,0 +1,38 @@
+# Terraform 다운로드 파일
+**/.terraform/*
+
+# 인프라 상태 파일 — 민감 정보가 포함될 수 있음
+*.tfstate
+*.tfstate.*
+/.state-backups/
+
+# 로컬 변수 및 실행 계획
+*.tfvars
+*.tfvars.json
+*.tfplan
+
+# Lambda 빌드 결과 및 Python 캐시
+/*-preprocess.zip
+**/__pycache__/
+**/.gradle/
+**/build/
+
+# IoT 장치별 개인키·CSR·발급 인증서·연결 설정
+/certificates/
+
+# 오류 로그
+crash.log
+crash.*.log
+
+# .terraform.lock.hcl은 업로드 해야함
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
