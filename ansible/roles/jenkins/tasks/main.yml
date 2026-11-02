@@ -39,7 +39,20 @@
   vars:
     docker_gid: "{{ ansible_facts.getent_group.docker[1] }}"
 
-- name: Build and start Jenkins
+- name: Check Jenkins image exists
+  community.docker.docker_image_info:
+    name: "{{ jenkins_image }}"
+  register: jenkins_image_info
+
+# compose(bake) 빌드는 network: host에 --allow=network.host 권한이 필요하므로 docker build로 따로 빌드
+# 빌드는 기본 브리지(MTU 1500)에서 돌아 플러그인 다운로드가 멈출 수 있음 → 호스트 NIC(MTU 1450) 사용
+- name: Build Jenkins image
+  ansible.builtin.command: >-
+    docker build --network host -t {{ jenkins_image }} {{ jenkins_dir }}
+  when: jenkins_image_info.images | length == 0
+
+- name: Start Jenkins
   community.docker.docker_compose_v2:
     project_src: "{{ jenkins_dir }}"
+    pull: never
     state: present
