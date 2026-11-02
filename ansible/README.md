@@ -33,11 +33,7 @@ ansible-playbook playbooks/jenkins.yml
 `jenkins-docker.yml`: Docker 공식 APT 저장소로 Docker Engine, Compose 플러그인 설치
 `jenkins.yml`: `/opt/jenkins`에서 커스텀 이미지를 빌드하고 Docker Compose로 Jenkins 실행
 
-- 접속: `127.0.0.1:8080`에만 바인딩되어 외부에 노출되지 않음. Tailscale로 접속
-  ```bash
-  sudo tailscale serve --bg 8080
-  # https://<호스트명>.<tailnet>.ts.net 으로 접속, Jenkins URL도 이 주소로 설정
-  ```
+- 접속: `http://<jenkins-1 주소>:8080`
 - Jenkins 홈: `/data/jenkins_home`
 - 이미지 태그, MTU, HTTP 타임아웃: `roles/jenkins/defaults/main.yml`
 - 플러그인 목록: `roles/jenkins/files/plugins.txt`
