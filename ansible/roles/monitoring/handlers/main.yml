@@ -1,0 +1,19 @@
+---
+# bind mount한 설정 파일은 바뀌어도 compose가 컨테이너를 재생성하지 않으므로 직접 재시작
+- name: Restart prometheus
+  community.docker.docker_compose_v2:
+    project_src: "{{ monitoring_dir }}"
+    services: [prometheus]
+    state: restarted
+
+- name: Restart alertmanager
+  community.docker.docker_compose_v2:
+    project_src: "{{ monitoring_dir }}"
+    services: [alertmanager]
+    state: restarted
+
+- name: Restart grafana
+  community.docker.docker_compose_v2:
+    project_src: "{{ monitoring_dir }}"
+    services: [grafana]
+    state: restarted

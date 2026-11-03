@@ -1,0 +1,7 @@
+---
+- name: Deploy Prometheus, Alertmanager, Grafana on monitoring VM
+  hosts: monitoring
+  become: true
+
+  roles:
+    - monitoring

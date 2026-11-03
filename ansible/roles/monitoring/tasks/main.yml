@@ -1,0 +1,84 @@
+---
+# Docker Compose로 Prometheus, Alertmanager, Grafana 배포 (Docker는 docker role에서 설치)
+- name: Verify Grafana admin password is set
+  ansible.builtin.assert:
+    that:
+      - grafana_admin_password is defined
+      - grafana_admin_password | length > 0
+    fail_msg: "grafana_admin_password가 없습니다. inventory/group_vars/monitoring/vault.yml을 만들고 --ask-vault-pass로 실행하세요."
+
+- name: Verify Docker Compose is available
+  ansible.builtin.command: docker compose version
+  changed_when: false
+
+- name: Create config directories
+  ansible.builtin.file:
+    path: "{{ monitoring_dir }}/{{ item }}"
+    state: directory
+    mode: '0755'
+  loop:
+    - prometheus/rules
+    - alertmanager
+    - grafana/provisioning/datasources
+
+# 컨테이너 실행 사용자: Prometheus·Alertmanager = nobody(65534), Grafana = 472
+- name: Create data directories
+  ansible.builtin.file:
+    path: "{{ monitoring_data_dir }}/{{ item.name }}"
+    state: directory
+    owner: "{{ item.uid }}"
+    group: "{{ item.gid }}"
+    mode: '0750'
+  loop:
+    - { name: prometheus, uid: '65534', gid: '65534' }
+    - { name: alertmanager, uid: '65534', gid: '65534' }
+    - { name: grafana, uid: '472', gid: '0' }
+
+- name: Render Prometheus config
+  ansible.builtin.template:
+    src: prometheus.yml.j2
+    dest: "{{ monitoring_dir }}/prometheus/prometheus.yml"
+    mode: '0644'
+  notify: Restart prometheus
+
+# 규칙 파일은 {{ $labels }} 같은 Prometheus 템플릿 문법을 쓰므로 Jinja 렌더링 없이 복사
+- name: Copy Prometheus alert rules
+  ansible.builtin.copy:
+    src: rules/
+    dest: "{{ monitoring_dir }}/prometheus/rules/"
+    mode: '0644'
+  notify: Restart prometheus
+
+- name: Render Alertmanager config
+  ansible.builtin.template:
+    src: alertmanager.yml.j2
+    dest: "{{ monitoring_dir }}/alertmanager/alertmanager.yml"
+    mode: '0644'
+  notify: Restart alertmanager
+
+- name: Copy Grafana datasource provisioning
+  ansible.builtin.copy:
+    src: grafana/provisioning/datasources/
+    dest: "{{ monitoring_dir }}/grafana/provisioning/datasources/"
+    mode: '0644'
+  notify: Restart grafana
+
+- name: Render Grafana environment file
+  ansible.builtin.template:
+    src: grafana.env.j2
+    dest: "{{ monitoring_dir }}/grafana/grafana.env"
+    mode: '0600'
+  no_log: true
+  notify: Restart grafana
+
+- name: Render docker-compose.yml
+  ansible.builtin.template:
+    src: docker-compose.yml.j2
+    dest: "{{ monitoring_dir }}/docker-compose.yml"
+    mode: '0644'
+
+- name: Start monitoring stack
+  community.docker.docker_compose_v2:
+    project_src: "{{ monitoring_dir }}"
+    pull: missing
+    state: present
