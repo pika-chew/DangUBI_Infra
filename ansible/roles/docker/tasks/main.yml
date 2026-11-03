@@ -1,5 +1,5 @@
 ---
-# Docker 공식 APT 저장소를 사용해 Jenkins 제어 노드에 Docker Engine 설치
+# Docker 공식 APT 저장소를 사용해 Docker Engine 설치
 - name: Install Docker repository dependencies
   ansible.builtin.apt:
     name:
@@ -69,13 +69,13 @@
   ansible.builtin.apt:
     name: qemu-user-static
     state: present
-  when: ansible_architecture != 'aarch64'
+  when: docker_arm64_emulation and ansible_architecture != 'aarch64'
 
 - name: Read arm64 binfmt registration
   ansible.builtin.slurp:
     src: /proc/sys/fs/binfmt_misc/qemu-aarch64
   register: qemu_aarch64_binfmt
-  when: ansible_architecture != 'aarch64'
+  when: docker_arm64_emulation and ansible_architecture != 'aarch64'
 
 - name: Verify arm64 emulation is enabled with the fix-binary flag
   ansible.builtin.assert:
@@ -85,4 +85,4 @@
     fail_msg: "qemu-aarch64 binfmt가 F 플래그로 등록되지 않았습니다. 'systemctl restart systemd-binfmt' 후 다시 실행하세요."
   vars:
     binfmt_text: "{{ qemu_aarch64_binfmt.content | b64decode }}"
-  when: ansible_architecture != 'aarch64'
+  when: docker_arm64_emulation and ansible_architecture != 'aarch64'

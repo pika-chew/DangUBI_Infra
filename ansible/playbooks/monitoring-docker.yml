@@ -1,0 +1,8 @@
+---
+- name: Install Docker Engine on monitoring VM
+  hosts: monitoring
+  become: true
+
+  roles:
+    - role: docker
+      docker_arm64_emulation: false
