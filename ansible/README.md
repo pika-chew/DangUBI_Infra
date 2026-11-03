@@ -2,7 +2,7 @@
 
 Ansible로 OpenStack VM 위에 올라가는 인프라를 구축/관리합니다.
 
-- Ansible Control Node: jenkins-1
+- Ansible Control Node: jenkins-vm
 
 ---
 <br>
@@ -27,13 +27,13 @@ ansible all -m ping
 
 ```bash
 ansible-playbook playbooks/jenkins-docker.yml
-# Docker 그룹 권한 적용을 위해 jenkins-1 VM에 다시 로그인
+# Docker 그룹 권한 적용을 위해 jenkins-vm에 다시 로그인
 ansible-playbook playbooks/jenkins.yml
 ```
 `jenkins-docker.yml`: Docker 공식 APT 저장소로 Docker Engine, Compose 플러그인 설치, arm64 이미지 빌드용 QEMU 에뮬레이션(`qemu-user-static`) 설치
 `jenkins.yml`: `/opt/jenkins`에서 커스텀 이미지를 빌드하고 Docker Compose로 Jenkins 실행
 
-- 접속: `http://<jenkins-1 주소>:8080`
+- 접속: `http://<jenkins-vm 주소>:8080`
 - Jenkins 홈: `/var/lib/jenkins` (Cinder 볼륨 마운트 경로, 컨테이너의 `/var/jenkins_home`에 bind mount)
 - 이미지 태그, MTU, HTTP 타임아웃: `roles/jenkins/defaults/main.yml`
 - 플러그인 목록: `roles/jenkins/files/plugins.txt`
@@ -51,3 +51,23 @@ ansible-playbook playbooks/jenkins.yml
 ```bash
 docker exec jenkins cat /var/jenkins_home/secrets/initialAdminPassword
 ```
+
+---
+<br>
+
+## Observability setup
+
+모니터링 VM(`observability-vm`)에 관측 백엔드를 구축합니다.
+
+- 주소: Floating IP `10.20.0.140` / 사설 IP `172.16.20.182`
+- Ansible은 Floating IP로 접속 (`inventory/hosts.yml`의 `monitoring` 그룹)
+- 저장소 데이터는 Cinder 볼륨 없이 인스턴스 루트 디스크(120GB)에 저장
+
+```bash
+# 최초 1회: jenkins-vm에서 SSH 접속해 host key 등록, sudo 확인
+ssh ubuntu@10.20.0.140 'sudo -n true && echo sudo-ok'
+
+ansible monitoring -m ping
+ansible-playbook playbooks/monitoring-docker.yml
+```
+`monitoring-docker.yml`: `docker` 롤로 Docker Engine, Compose 플러그인 설치. 이미지를 빌드하지 않으므로 QEMU 에뮬레이션은 설치하지 않음(`docker_arm64_emulation: false`)
