@@ -34,7 +34,7 @@ ansible-playbook playbooks/jenkins.yml
 `jenkins.yml`: `/opt/jenkins`에서 커스텀 이미지를 빌드하고 Docker Compose로 Jenkins 실행
 
 - 접속: `http://<jenkins-1 주소>:8080`
-- Jenkins 홈: `/data/jenkins_home`
+- Jenkins 홈: `/var/lib/jenkins` (Cinder 볼륨 마운트 경로, 컨테이너의 `/var/jenkins_home`에 bind mount)
 - 이미지 태그, MTU, HTTP 타임아웃: `roles/jenkins/defaults/main.yml`
 - 플러그인 목록: `roles/jenkins/files/plugins.txt`
   (Dockerfile/plugins.txt를 바꾸면 `jenkins_image` 태그 끝 숫자를 올려 재빌드)
