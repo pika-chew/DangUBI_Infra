@@ -38,3 +38,6 @@ crash.*.log
 *.njsproj
 *.sln
 *.sw?
+
+# Claude Code 로컬 지침
+CLAUDE.md
