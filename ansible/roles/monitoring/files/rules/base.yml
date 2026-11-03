@@ -1,0 +1,20 @@
+groups:
+  - name: watchdog
+    rules:
+      # 항상 발생하는 알림. 이 알림이 외부에 도착하지 않으면 알림 경로 전체가 죽은 것
+      - alert: Watchdog
+        expr: vector(1)
+        labels:
+          severity: none
+        annotations:
+          summary: 알림 파이프라인 정상 동작 확인용 하트비트
+
+  - name: scrape
+    rules:
+      - alert: TargetDown
+        expr: up == 0
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.job }} 대상({{ $labels.instance }})이 2분 이상 응답하지 않음"

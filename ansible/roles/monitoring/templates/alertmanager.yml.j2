@@ -1,0 +1,11 @@
+route:
+  receiver: "null"
+  group_by: [alertname, env, cluster]
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 4h
+
+# Slack 웹훅이 준비되면 수신자를 추가하고 route.receiver를 바꾼다
+# Watchdog는 이후 외부 하트비트로 라우팅
+receivers:
+  - name: "null"

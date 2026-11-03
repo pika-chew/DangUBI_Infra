@@ -1,0 +1,66 @@
+services:
+  prometheus:
+    image: {{ prometheus_image }}
+    container_name: prometheus
+    restart: unless-stopped
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time={{ prometheus_retention_time }}
+      - --storage.tsdb.retention.size={{ prometheus_retention_size }}
+      # Alloy가 remote_write로 메트릭을 보냄
+      - --web.enable-remote-write-receiver
+    ports:
+      - "{{ prometheus_port }}:9090"
+    volumes:
+      - {{ monitoring_dir }}/prometheus:/etc/prometheus:ro
+      - {{ monitoring_data_dir }}/prometheus:/prometheus
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:9090/-/healthy"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+
+  alertmanager:
+    image: {{ alertmanager_image }}
+    container_name: alertmanager
+    restart: unless-stopped
+    command:
+      - --config.file=/etc/alertmanager/alertmanager.yml
+      - --storage.path=/alertmanager
+    ports:
+      - "{{ alertmanager_port }}:9093"
+    volumes:
+      - {{ monitoring_dir }}/alertmanager:/etc/alertmanager:ro
+      - {{ monitoring_data_dir }}/alertmanager:/alertmanager
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:9093/-/healthy"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+
+  grafana:
+    image: {{ grafana_image }}
+    container_name: grafana
+    restart: unless-stopped
+    env_file:
+      - {{ monitoring_dir }}/grafana/grafana.env
+    ports:
+      - "{{ grafana_port }}:3000"
+    volumes:
+      - {{ monitoring_dir }}/grafana/provisioning:/etc/grafana/provisioning:ro
+      - {{ monitoring_data_dir }}/grafana:/var/lib/grafana
+    depends_on:
+      - prometheus
+      - alertmanager
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+networks:
+  default:
+    driver_opts:
+      com.docker.network.driver.mtu: "{{ monitoring_docker_mtu }}"

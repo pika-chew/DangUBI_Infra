@@ -1,0 +1,27 @@
+---
+# 설정 파일, docker-compose.yml 위치
+monitoring_dir: /opt/monitoring
+# 저장소 데이터 위치. Cinder 볼륨 없이 루트 디스크 사용 (나중에 볼륨을 붙이면 이 경로에 마운트)
+monitoring_data_dir: /var/lib/monitoring
+
+prometheus_image: prom/prometheus:v3.5.0
+alertmanager_image: prom/alertmanager:v0.28.1
+grafana_image: grafana/grafana:12.0.2
+
+prometheus_port: 9090
+alertmanager_port: 9093
+grafana_port: 3000
+
+# 기간과 용량 중 먼저 닿는 쪽으로 오래된 블록 삭제. 루트 디스크가 가득 차면 OS까지 멈추므로 용량 상한 필수
+prometheus_retention_time: 30d
+prometheus_retention_size: 40GB
+
+# 모든 텔레메트리에 붙이는 공통 라벨
+monitoring_env: private
+monitoring_cluster: observability-vm
+
+grafana_admin_user: admin
+# grafana_admin_password는 inventory/group_vars/monitoring에서 Vault 값으로 지정
+
+# 컨테이너 네트워크 MTU. VM NIC MTU보다 크면 큰 패킷이 버려져 HTTPS 연결이 멈춘다
+monitoring_docker_mtu: 1450

@@ -1,0 +1,3 @@
+---
+# 비밀값은 같은 디렉토리의 vault.yml(ansible-vault로 암호화)에 vault_ 접두어로 둔다
+grafana_admin_password: "{{ vault_grafana_admin_password }}"

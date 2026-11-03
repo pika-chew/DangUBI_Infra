@@ -71,3 +71,28 @@ ansible monitoring -m ping
 ansible-playbook playbooks/monitoring-docker.yml
 ```
 `monitoring-docker.yml`: `docker` 롤로 Docker Engine, Compose 플러그인 설치. 이미지를 빌드하지 않으므로 QEMU 에뮬레이션은 설치하지 않음(`docker_arm64_emulation: false`)
+
+### Prometheus · Alertmanager · Grafana
+
+```bash
+# 최초 1회: Grafana 관리자 비밀번호를 Vault로 암호화해 저장
+ansible-vault create inventory/group_vars/monitoring/vault.yml
+#   vault_grafana_admin_password: <비밀번호>
+
+ansible-playbook playbooks/monitoring.yml --ask-vault-pass
+```
+`monitoring.yml`: `/opt/monitoring`에 설정 파일과 `docker-compose.yml`을 만들고 Docker Compose로 실행
+
+| 서비스 | 포트 | 데이터 경로 |
+|---|---|---|
+| Prometheus | 9090 | `/var/lib/monitoring/prometheus` |
+| Alertmanager | 9093 | `/var/lib/monitoring/alertmanager` |
+| Grafana | 3000 | `/var/lib/monitoring/grafana` |
+
+- 이미지 버전, 포트, 보관 기간(30일 / 40GB), MTU: `roles/monitoring/defaults/main.yml`
+- 알림 규칙: `roles/monitoring/files/rules/` (Jinja 렌더링 없이 복사)
+- Grafana 데이터소스(Prometheus, Alertmanager): `roles/monitoring/files/grafana/provisioning/` 로 자동 등록
+- Prometheus는 `--web.enable-remote-write-receiver`로 Alloy의 remote_write를 받음
+- Alertmanager 수신자는 아직 `null`. Slack 웹훅이 준비되면 Vault에 넣고 `alertmanager.yml.j2`에 추가
+- 설정 파일이 바뀌면 해당 컨테이너만 재시작(handler)
+- Grafana 관리자 비밀번호는 Grafana DB가 처음 만들어질 때만 적용됨
