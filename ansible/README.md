@@ -96,3 +96,16 @@ ansible-playbook playbooks/monitoring.yml --ask-vault-pass
 - Alertmanager 수신자는 아직 `null`. Slack 웹훅이 준비되면 Vault에 넣고 `alertmanager.yml.j2`에 추가
 - 설정 파일이 바뀌면 해당 컨테이너만 재시작(handler)
 - Grafana 관리자 비밀번호는 Grafana DB가 처음 만들어질 때만 적용됨
+
+### Alloy (모니터링 VM 자기 감시)
+
+```bash
+ansible-playbook playbooks/alloy.yml --ask-vault-pass
+```
+`alloy.yml`: Grafana 공식 APT 저장소로 Alloy를 설치하고 systemd 서비스로 실행
+
+- 수집: 호스트 메트릭(`prometheus.exporter.unix`), Alloy 자신의 상태(`prometheus.exporter.self`)
+- 전송: `alloy_remote_write_url`로 remote write, 모든 메트릭에 `env`·`cluster` 라벨 추가
+- 그룹별 설정(`alloy_cluster`, `alloy_remote_write_url`): `inventory/group_vars/<그룹>/vars.yml`
+- 설정 파일: `/etc/alloy/config.alloy` (배포 전 `alloy fmt`로 문법 검사)
+- 디버깅 UI: `127.0.0.1:12345` (외부 미노출, `ssh -L 12345:localhost:12345`로 접속)

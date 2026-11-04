@@ -1,0 +1,37 @@
+// Ansible alloy 롤이 관리하는 파일. 직접 수정하지 말 것
+
+// 호스트 메트릭 (CPU, 메모리, 디스크, 네트워크)
+prometheus.exporter.unix "host" { }
+
+prometheus.scrape "host" {
+  targets         = prometheus.exporter.unix.host.targets
+  forward_to      = [prometheus.remote_write.default.receiver]
+  scrape_interval = "{{ alloy_scrape_interval }}"
+}
+
+// Alloy 자신의 상태 (전송 실패, 대기열 등)
+prometheus.exporter.self "alloy" { }
+
+prometheus.scrape "alloy" {
+  targets         = prometheus.exporter.self.alloy.targets
+  forward_to      = [prometheus.remote_write.default.receiver]
+  scrape_interval = "{{ alloy_scrape_interval }}"
+}
+
+prometheus.remote_write "default" {
+  endpoint {
+    url = "{{ alloy_remote_write_url }}"
+{% if alloy_remote_write_username is defined %}
+
+    basic_auth {
+      username = "{{ alloy_remote_write_username }}"
+      password = "{{ alloy_remote_write_password }}"
+    }
+{% endif %}
+  }
+
+  external_labels = {
+    env     = "{{ alloy_env }}",
+    cluster = "{{ alloy_cluster }}",
+  }
+}

@@ -1,0 +1,18 @@
+---
+# 비워두면 APT 저장소 최신 버전 설치. 고정하려면 "1.10.2"처럼 지정
+alloy_version: ""
+
+# 모든 텔레메트리에 붙이는 공통 라벨
+alloy_env: private
+# alloy_cluster는 inventory/group_vars에서 그룹별로 지정
+
+# 메트릭을 보낼 Prometheus remote write 주소 (inventory/group_vars에서 지정)
+# alloy_remote_write_url: http://<모니터링 VM>/api/v1/write
+# Nginx 인증을 거칠 때만 지정 (비밀번호는 Vault)
+# alloy_remote_write_username:
+# alloy_remote_write_password:
+
+alloy_scrape_interval: 30s
+
+# Alloy 디버깅 UI. 외부에 노출하지 않도록 localhost에만 바인딩
+alloy_listen_addr: 127.0.0.1:12345

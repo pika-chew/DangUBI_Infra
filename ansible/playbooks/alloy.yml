@@ -1,0 +1,8 @@
+---
+# 노트북 호스트 그룹은 2-3 단계에서 추가
+- name: Deploy Grafana Alloy
+  hosts: monitoring
+  become: true
+
+  roles:
+    - alloy
