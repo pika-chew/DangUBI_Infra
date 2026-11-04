@@ -104,7 +104,8 @@ ansible-playbook playbooks/monitoring.yml --ask-vault-pass
 
 OpenStack VM 위에 kubeadm + containerd로 단일 Kubernetes 클러스터를 구성합니다.
 role은 OS·containerd 준비, 첫 Control Plane의 init, 나머지 Control Plane과 Worker의
-순차 join을 수행합니다. VM 생성과 SSH/sudo 접속은 확인했으며, 실제 클러스터 구축은 검증 전입니다.
+순차 join, OpenStack CCM·Calico 설치와 네트워크 검증을 수행합니다.
+VM 생성과 SSH/sudo 접속은 확인했으며, 실제 클러스터 구축은 검증 전입니다.
 빈 설정값으로는 설치를 시작하지 않습니다.
 
 - Control Plane VM 3대: ctl1·ctl2·ctl3에 각각 배치, stacked etcd 구성
@@ -133,12 +134,14 @@ roles/kubernetes/
 ├── api_lb/         # 선택적으로 CP의 HAProxy·Keepalived 구성
 ├── control_plane/  # 첫 CP의 kubeadm init과 API 응답 확인
 ├── join/           # 추가 CP와 Worker 가입, 임시 자격증명 정리
-├── verify/         # 7개 노드 등록 확인과 후속 작업 안내
+├── ccm/            # OpenStack 노드 연동, hostNetwork로 CNI보다 먼저 시작
+├── calico/         # Tigera Operator와 VXLAN Installation 구성
+├── verify/         # 7대 Ready·cloud identity·Worker Pod 통신과 DNS 검사
 └── tests/          # VM에 접속하지 않는 로컬 검증
 ```
 
 실행 순서는 inventory 검증 → 전체 노드의 preflight/common/packages/containerd →
-CP의 API LB → 첫 CP 초기화 → 추가 CP 순차 가입 → Worker 순차 가입 → 결과 확인입니다.
+CP의 API LB → 첫 CP 초기화 → 추가 CP 순차 가입 → Worker 순차 가입 → CCM → Calico → 결과 확인입니다.
 첫 CP는 inventory의 `kubernetes_control_plane` 그룹에서 첫 번째로 등록한 VM입니다.
 추가 CP play는 `[1:]`로 첫 CP를 제외하며, `serial: 1`로 etcd 멤버를 한 대씩 추가합니다.
 템플릿과 handler는 사용하는 role 안에 두고, 공통 입력값과 기본 설정은
@@ -182,7 +185,7 @@ SSH/Python 실행과 sudo 권한은 7대에서 확인했으며, 클러스터 설
 - `vault_kubernetes_service_cidr`: 선택한 `/16` Service CIDR
 
 `vault.yml.example`은 값이 비어 있는 변수 이름 안내이며, 자동 로딩 대상이 아닙니다.
-저장소에는 실제 암호화된 `vault.yml`이 아직 없으므로, 사용하는 환경에서 최초 1회 생성해야 합니다.
+새 환경에 암호화된 `vault.yml`이 없다면 최초 1회 생성합니다. 기존 파일이 있으면 다시 만들지 않습니다.
 기존 `group_vars/kubernetes.yml`과 새 디렉터리를 동시에 유지하지 않습니다.
 기존 파일은 삭제하고 디렉터리 구조로 옮겼으므로 브랜치 업데이트 시 삭제도 함께 반영합니다.
 
@@ -206,7 +209,9 @@ Vault 파일을 참조하는 Kubernetes 명령에는 `--ask-vault-pass`를 사�
 - CNI, Pod CIDR, Service CIDR, VM NIC MTU와 CNI의 MTU
 - HAProxy·Keepalived 설치 위치, API VIP/FIP, 인증서, 보안그룹과 VIP 전환
 - OpenStack CCM의 노드 연동 사용, Service·Route 컨트롤러 비활성화 설정
-- Cinder·local PV용 디스크와 마운트 경로, OpenStack 접근 정보
+- CCM용 Application Credential과 CP에서 Keystone·Nova·Neutron API 접근
+
+Cinder·local PV용 디스크·마운트·CSI 설정은 후속 스토리지 구성 단계에서 준비합니다.
 
 `inventory/group_vars/kubernetes/vars.yml`의 빈 값을 채운 뒤 실행합니다.
 Kubernetes는 `kubernetes_version`과 APT의 정확한 `kubernetes_package_version`을 함께 지정하고,
@@ -214,21 +219,24 @@ containerd도 `kubernetes_containerd_package_version`에 저장소의 정확한 
 role은 Docker Engine을 설치하지 않습니다. containerd 1.x/2.x에 맞춰 설정 스키마를 구분하며,
 Kubernetes 패키지는 kubeadm v1beta4 설정을 지원하는 1.31 이상을 전제로 합니다.
 이 하한은 해당 버전의 운영 지원 또는 최신 버전과의 호환성을 보장한다는 뜻은 아닙니다.
-구축 시점에 지원되는 Kubernetes/containerd/CNI 조합을 선택해야 합니다.
+현재 addon 사전 검증은 Kubernetes 1.36·Calico v3.33.0·CCM v1.36.0 조합으로 제한합니다.
+버전 변경은 CRD·설정·공식 호환 범위를 다시 검토한 뒤 별도 업그레이드 절차로 진행합니다.
 
 현재 선택한 초기 구축 조합은 Kubernetes `1.36.5`(APT `1.36.5-1.1`),
-containerd `2.3.6` LTS(APT `2.3.6-1~ubuntu.24.04~noble`), Calico `v3.33.0`입니다.
+containerd `2.3.6` LTS(APT `2.3.6-1~ubuntu.24.04~noble`), Calico `v3.33.0`, OpenStack CCM `v1.36.0`입니다.
 Calico 3.33의 테스트 범위에 Kubernetes 1.36이 포함되고, containerd 2.3은 Kubernetes 1.36의
 권장 호환 범위에 포함됩니다. 이는 공식 문서상의 호환 범위이며 실제 VM 설치·통신 검증은 아직 수행하지 않았습니다.
 Kubernetes 패키지는 amd64/arm64 등, 위 containerd 패키지는 Ubuntu 24.04 amd64 저장소에서 존재를 확인했습니다.
 
-Calico는 별도 레포에서 일반 Linux `Iptables` 데이터플레인, kube-proxy 유지,
-IPv4 VXLAN Always, BGP 비활성화, workload/tunnel MTU `1400`으로 구성할 계획입니다.
+Calico role은 일반 Linux `Iptables` 데이터플레인, kube-proxy 유지,
+IPv4 VXLAN Always, BGP 비활성화, workload/tunnel MTU `1400`으로 설치합니다.
 노드 간 UDP 4789를 허용하고, Pod CIDR을 kubeadm과 Calico IPPool에서 일치시킵니다.
-`inventory/group_vars/kubernetes/vars.yml`의 `kubernetes_cni`와 `kubernetes_calico_*`는 이 선택을
-기록한 참조값이며, 이 Ansible role이 소비해 CNI를 자동 설치하는 변수는 아닙니다.
-Calico 설치 시 기본값에 의존하지 않고 `Installation.spec.calicoNetwork.linuxDataplane: Iptables`,
-`bgp: Disabled`, `ipPools[].encapsulation: VXLAN`, `mtu: 1400`을 명시해야 합니다.
+`inventory/group_vars/kubernetes/vars.yml`의 `kubernetes_calico_*`를 Installation에 반영합니다.
+Kubernetes 1.36용 공식 `v3_projectcalico_org.yaml`을 server-side apply한 뒤 Tigera Operator를 설치합니다.
+Operator의 hostNetwork와 taint toleration으로 초기 NotReady 상태에서도 시작할 수 있습니다.
+Operator가 Installation API를 등록하면 `linuxDataplane: Iptables`, `bgp: Disabled`,
+`ipPools[].encapsulation: VXLAN`, `mtu: 1400`과 NodeInternalIP 자동 감지를 명시합니다.
+API server·Goldmane·Whisker 등 선택 구성은 설치하지 않습니다.
 MTU 1400은 경로 MTU 1450·IPv4 VXLAN·추가 암호화 없음이라는 전제이며 실제 Pod 통신으로 확인합니다.
 Pod·Service CIDR 값은 Vault에 저장하며, Service CIDR 크기는 `/16`으로 선택했습니다.
 연결할 다른 네트워크와 CIDR 충돌이 없음을 사용자 확인했습니다.
@@ -258,17 +266,43 @@ CIDR은 `192.0.2.0/24`처럼 IP 주소 범위를 나타냅니다. 노드·Pod·S
 NIC MTU는 네트워크 인터페이스가 전달할 수 있는 IP 패킷의 최대 바이트 크기입니다.
 CNI 캡슐화에는 추가 공간이 필요할 수 있으므로 기존 Docker MTU를 그대로 적용하지 않습니다.
 role은 VM NIC MTU를 변경하지 않고 입력값과 실제 값이 같은지 검사합니다.
-CNI의 MTU 설정과 사내망·VPN 대역 충돌 확인은 별도로 수행합니다.
+CNI MTU 설정을 설치에 반영하며, 사내망·VPN 대역 충돌은 실행 전에 확인합니다.
 
 ### 설치와 재실행
 
+CCM 자격 증명은 기존 Vault 네 변수와 분리하여 Jenkins의 현재 셸 환경변수로 전달합니다.
+아래는 Bash 기준이며, ID·Secret을 명령어에 직접 쓰지 않습니다. Secret 입력은 화면에 표시되지 않습니다.
+
 ```bash
+read -r -p 'Application Credential ID: ' OS_APPLICATION_CREDENTIAL_ID
+read -r -s -p 'Application Credential Secret: ' OS_APPLICATION_CREDENTIAL_SECRET
+printf '\n'
+export OS_APPLICATION_CREDENTIAL_ID OS_APPLICATION_CREDENTIAL_SECRET
+
 # VM 등록·변수 입력·SSH/sudo·OpenStack 네트워크 준비 후 전체 클러스터 실행
 ansible-playbook playbooks/kubernetes/site.yml --ask-vault-pass
+
+# 실행이 끝나면 셸에서도 지웁니다. 재실행 시 다시 입력합니다.
+unset OS_APPLICATION_CREDENTIAL_ID OS_APPLICATION_CREDENTIAL_SECRET
 
 # VM에 접속하지 않는 로컬 검증. Python 3.11 이상과 Ansible 필요
 python3 roles/kubernetes/tests/verify.py
 ```
+
+로컬 RPC 소켓 실행이 제한된 환경에서는 Ansible Python 환경에서
+`python3 roles/kubernetes/tests/verify_addons.py --offline`으로 API 모의 응답·실제 템플릿·사전 조건을 검사할 수 있습니다.
+이 검사는 실제 Ansible task 실행과 실패 시 Namespace 정리 통합 검증을 대신하지 않습니다.
+
+`preflight`는 VM 설정을 바꾸기 전에 자격 증명 유무·프로젝트·리전·VM 이름의 유일성,
+Nova VM/Flavor 조회와 Neutron 포트 조회 및 inventory의 사설 IP 일치를 CP 각각에서 검사합니다.
+기존 TCP 연결 확인·VM 목록 조회만으로는 Neutron 권한까지 검증한 것이 아닙니다.
+API 정책에 따라 `reader`의 조회가 거절되면 정책·프로젝트 권한을 먼저 점검하고 admin 권한을 무조건 부여하지 않습니다.
+실제 ID·Secret과 인증 응답은 `no_log`로 숨기고 stdin으로 전달합니다.
+해당 SSH 작업은 pipelining을 사용하며, 별도 `cloud.conf` 임시 파일을 만들지 않습니다.
+CCM 설정은 `kube-system`의 `dangubi-openstack-cloud-config` Secret에 저장되며,
+Secret 변경 시 Pod template의 해시가 바뀌어 CCM을 다시 시작합니다.
+Kubernetes Secret의 base64는 암호화가 아니므로 해당 Secret에 대한 RBAC 접근을 제한해야 합니다.
+Jenkins 자동 작업에서는 Credentials Binding으로 같은 두 환경변수를 주입할 수 있습니다.
 
 실행 중 swap을 비활성화하고 fstab의 swap 항목을 주석 처리하며, 커널 모듈·sysctl·APT 저장소를 구성합니다.
 선택한 containerd/Kubernetes 패키지는 설치 후 hold합니다. 최초 init/join 성공 노드에 관리 마커를 남겨
@@ -281,19 +315,24 @@ python3 roles/kubernetes/tests/verify.py
 별도 권한 관리 없이 Jenkins 작업이나 일반 사용자에게 배포하지 않습니다.
 join token은 단기 발급 후 회수하고, 임시 join 설정은 성공·실패 시 삭제합니다.
 
-role의 마지막 검증은 API 응답과 7개 노드의 등록입니다. CNI 설치 전의 `NotReady`는 정상적인 중간 상태이며,
-현재 `kubernetes_external_cloud_provider: true`이므로 CCM 설치 전에는 미초기화 taint가 남습니다.
-CNI/CCM 구성 후 `kubectl get nodes`의 Ready 상태와 실제 Pod 통신·DNS를 별도로 검증해야 합니다.
+최종 검증은 API 응답, 7개 노드 Ready, inventory와 같은 InternalIP, 실제 OpenStack VM UUID와 같은
+providerID, CCM 미초기화 taint 해제, Calico·kube-proxy·CoreDNS rollout입니다.
+이어서 임시 Namespace와 Worker별 HTTP Pod 1개 및 ClusterIP Service를 생성합니다.
+모든 Worker에서 Kubernetes/테스트 Service DNS 조회, Service HTTP 접근과 4개 Worker의 Pod IP 접근을 검사합니다.
+테스트 Namespace는 성공·실패 모두 정리하며, 이미지 다운로드·초기 조정 대기는 기본 600초입니다.
+CP의 GitHub 원본 매니페스트 다운로드와 노드의 registry.k8s.io·quay.io·Docker Hub 이미지 다운로드가 가능해야 합니다.
+프로세스 강제 종료나 API 불통으로 정리에 실패하면 `dangubi-network-check-`로 시작하는 Namespace를 확인합니다.
+Calico/CCM 설치 도중에는 NotReady·미초기화 taint가 나타날 수 있지만, 이를 남긴 채 구축 성공으로 보고하지 않습니다.
 
 ### 클러스터 초기 구성과 서비스 배포
 
-Ansible은 VM의 OS·containerd·kubeadm/kubelet과 클러스터 init/join을 구성합니다.
+Ansible은 VM의 OS·containerd·kubeadm/kubelet과 클러스터 init/join, Calico·CCM과 네트워크 검증을 구성합니다.
 클러스터 위의 애플리케이션 매니페스트는 별도 레포에서 관리합니다.
 
-Argo CD를 사용할 경우, 먼저 CNI 및 필요한 CCM 등 초기 구성을 적용해 Argo CD가 실행될 환경을
-마련하고 Argo CD를 최초 설치합니다. 이후 별도 레포의 Application을 등록해 서비스들을 동기화합니다.
-이 초기 설치 단계의 실행 주체와 레포 간 연결 방식은 아직 미확정이며, CNI/CCM/Argo CD 설치는 현재 role에 포함되지 않습니다.
-후속 플랫폼 구성도 의존 순서에 맞춰 Argo CD로 관리할 수 있습니다.
+이 플레이북의 최종 검증이 끝난 뒤 Argo CD를 최초 설치하고,
+별도 레포의 Application을 등록해 서비스들을 동기화합니다. Argo CD 설치는 현재 role에 포함되지 않습니다.
+Cinder CSI·MetalLB 등의 후속 플랫폼 구성도 의존 순서에 맞춰 Argo CD로 관리할 수 있습니다.
+Calico·CCM은 현재 Ansible이 관리하므로 같은 리소스를 Argo CD에서 동시에 관리하지 않습니다.
 
 Argo CD는 일반 YAML뿐 아니라 Helm chart와 Kustomize 구성을 사용할 수 있습니다.
 대안으로 직접 `kubectl apply`, Helm CLI, Jenkins 파이프라인을 통한 배포도 가능합니다.
@@ -313,7 +352,7 @@ CCM은 `cloud-node`와 `cloud-node-lifecycle` 컨트롤러만 사용합니다.
 Service 컨트롤러는 MetalLB와의 중복 관리를 피하기 위해, Route 컨트롤러는 Calico VXLAN을 사용하므로 비활성화합니다.
 Keystone 인증 주소는 `http://10.10.0.10:5000`, 리전은 `RegionOne`입니다.
 `ubi` 프로젝트의 `reader` 애플리케이션 자격 증명으로 인증과 Kubernetes VM 7대 조회를 확인했습니다.
-자격 증명 ID·Secret은 이 설정에 포함하지 않으며, 별도 레포의 CCM 배포 시 안전하게 주입합니다.
+자격 증명 ID·Secret의 실제 값은 Git에 포함하지 않으며, Ansible 실행 시 환경변수로 주입합니다.
 MetalLB의 L2 광고와 FIP 연결은 실제 Neutron 환경에서 동작을 검증해야 합니다.
 
 참고: [Kubernetes CCM](https://kubernetes.io/docs/concepts/architecture/cloud-controller/),

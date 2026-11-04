@@ -1,0 +1,38 @@
+---
+# Secret은 stdin으로만 적용합니다. 제어 노드나 CP에 cloud.conf 파일을 만들지 않습니다.
+- name: Apply OpenStack cloud configuration Secret
+  ansible.builtin.command:
+    argv: [kubectl, --kubeconfig, /etc/kubernetes/admin.conf, apply, -f, '-']
+    stdin: >-
+      {{ {'apiVersion': 'v1', 'kind': 'Secret',
+          'metadata': {'name': 'dangubi-openstack-cloud-config', 'namespace': 'kube-system'},
+          'type': 'Opaque', 'data': {'cloud.conf': lookup('ansible.builtin.template', 'cloud.conf.j2') | b64encode}} | to_json }}
+  register: kubernetes_ccm_secret
+  changed_when: "'created' in kubernetes_ccm_secret.stdout or 'configured' in kubernetes_ccm_secret.stdout"
+  no_log: true
+  vars:
+    ansible_ssh_pipelining: true
+
+- name: Apply node-only OpenStack CCM
+  ansible.builtin.command:
+    argv: [kubectl, --kubeconfig, /etc/kubernetes/admin.conf, apply, -f, '-']
+    stdin: "{{ lookup('ansible.builtin.template', 'ccm.yml.j2') }}"
+  register: kubernetes_ccm_apply
+  changed_when: "'created' in kubernetes_ccm_apply.stdout or 'configured' in kubernetes_ccm_apply.stdout"
+  no_log: true
+  vars:
+    ansible_ssh_pipelining: true
+
+- name: Wait for CCM on all control planes
+  ansible.builtin.command:
+    argv:
+      - kubectl
+      - --kubeconfig
+      - /etc/kubernetes/admin.conf
+      - -n
+      - kube-system
+      - rollout
+      - status
+      - daemonset/openstack-cloud-controller-manager
+      - "--timeout={{ kubernetes_addon_timeout }}s"
+  changed_when: false

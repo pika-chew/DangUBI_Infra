@@ -23,7 +23,7 @@
       - ansible_facts[kubernetes_interface]['ipv4']['address'] == kubernetes_node_ip
       - kubernetes_manage_api_lb | bool or kubernetes_api_endpoint_ready | bool
     fail_msg: >-
-      Ubuntu 22.04/24.04 VM과 버전·IP·CIDR·NIC·MTU·CCM·API LB 설정을 확인하세요.
+      Ubuntu 24.04 VM과 버전·IP·CIDR·NIC·MTU·CCM·API LB 설정을 확인하세요.
       빈 변수로는 설치를 시작하지 않습니다.
 
 - name: Validate IPv4 network ranges on control node

@@ -1,0 +1,126 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: dangubi-openstack-ccm
+  namespace: kube-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: dangubi-openstack-ccm
+rules:
+  - apiGroups: [""]
+    resources: [nodes]
+    verbs: [get, list, watch, patch, update, delete]
+  - apiGroups: [""]
+    resources: [nodes/status]
+    verbs: [patch, update]
+  - apiGroups: [""]
+    resources: [events]
+    verbs: [get, create, patch, update]
+  - apiGroups: [""]
+    resources: [configmaps]
+    verbs: [get, list, watch]
+  - apiGroups: [coordination.k8s.io]
+    resources: [leases]
+    verbs: [get, list, watch, create, patch, update]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: dangubi-openstack-ccm
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: dangubi-openstack-ccm
+subjects:
+  - kind: ServiceAccount
+    name: dangubi-openstack-ccm
+    namespace: kube-system
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: openstack-cloud-controller-manager
+  namespace: kube-system
+spec:
+  selector:
+    matchLabels:
+      k8s-app: openstack-cloud-controller-manager
+  template:
+    metadata:
+      labels:
+        k8s-app: openstack-cloud-controller-manager
+      annotations:
+        # Secret 변경 시 새 설정으로 프로세스를 다시 시작합니다.
+        dangubi.io/cloud-config-sha256: {{ lookup('ansible.builtin.template', role_path + '/templates/cloud.conf.j2') | hash('sha256') | to_json }}
+    spec:
+      serviceAccountName: dangubi-openstack-ccm
+      nodeSelector:
+        node-role.kubernetes.io/control-plane: ""
+      priorityClassName: system-node-critical
+      # CNI·CoreDNS 설치 전에도 시작할 수 있어야 합니다.
+      hostNetwork: true
+      dnsPolicy: Default
+      tolerations:
+        - key: node-role.kubernetes.io/control-plane
+          operator: Exists
+          effect: NoSchedule
+        - key: node.cloudprovider.kubernetes.io/uninitialized
+          operator: Exists
+          effect: NoSchedule
+        - key: node.kubernetes.io/not-ready
+          operator: Exists
+          effect: NoSchedule
+      securityContext:
+        runAsUser: 1001
+        runAsNonRoot: true
+        fsGroup: 1001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: openstack-cloud-controller-manager
+          image: registry.k8s.io/provider-os/openstack-cloud-controller-manager:{{ kubernetes_ccm_version }}
+          args:
+            - /bin/openstack-cloud-controller-manager
+            - --cloud-provider=openstack
+            - --cloud-config=/etc/config/cloud.conf
+            - --cluster-name=dangubi
+            - --controllers=cloud-node,cloud-node-lifecycle
+            - --configure-cloud-routes=false
+            - --use-service-account-credentials=false
+            - --leader-elect=true
+            - --bind-address=127.0.0.1
+            - --v=1
+          env:
+            # Service VIP와 DNS에도 의존하지 않고 공통 API VIP로 직접 접근합니다.
+            - name: KUBERNETES_SERVICE_HOST
+              value: {{ kubernetes_api_vip | to_json }}
+            - name: KUBERNETES_SERVICE_PORT
+              value: {{ kubernetes_api_lb_port | string | to_json }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: [ALL]
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              memory: 256Mi
+          volumeMounts:
+            - name: cloud-config
+              mountPath: /etc/config
+              readOnly: true
+            - name: ca-certs
+              mountPath: /etc/ssl/certs
+              readOnly: true
+      volumes:
+        - name: cloud-config
+          secret:
+            secretName: dangubi-openstack-cloud-config
+            defaultMode: 0440
+        - name: ca-certs
+          hostPath:
+            path: /etc/ssl/certs
+            type: Directory

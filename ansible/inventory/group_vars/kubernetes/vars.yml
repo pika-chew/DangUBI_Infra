@@ -9,7 +9,7 @@ kubernetes_version: "1.36.5"
 kubernetes_package_version: "1.36.5-1.1"
 kubernetes_containerd_package_version: "2.3.6-1~ubuntu.24.04~noble" # containerd 2.3 LTS
 
-# 별도 매니페스트 레포에 전달할 Calico 참조값입니다. 이 Ansible은 CNI를 설치하지 않습니다.
+# Calico role이 Tigera Operator와 Installation 리소스를 설치할 때 사용하는 값입니다.
 # Installation에서는 linuxDataplane=Iptables, bgp=Disabled, ipPools[].encapsulation=VXLAN을 명시합니다.
 # kube-proxy는 유지하며 VXLAN Always를 사용합니다. VM NIC MTU(1450)는 변경하지 않습니다.
 kubernetes_cni: calico
@@ -26,8 +26,18 @@ kubernetes_pod_cidr: "{{ vault_kubernetes_pod_cidr }}"
 kubernetes_service_cidr: "{{ vault_kubernetes_service_cidr }}"
 kubernetes_api_endpoint: "172.16.10.10:16443" # Horizon에서 API VIP 예약 포트 확인
 kubernetes_api_cert_sans: ['10.20.0.110'] # Horizon에서 API VIP로의 FIP 연결 확인
-# CCM의 노드 연동을 사용합니다. 별도 레포에서 CCM을 설치해야 미초기화 taint가 해제됩니다.
+# CCM role이 노드 정보를 연동하고 미초기화 taint를 해제합니다.
 kubernetes_external_cloud_provider: true
+kubernetes_ccm_version: v1.36.0 # Kubernetes와 같은 minor 버전으로 고정
+kubernetes_openstack_auth_url: http://10.10.0.10:5000
+kubernetes_openstack_region: RegionOne
+kubernetes_openstack_project_id: df62a014610a4a36bf5fce2d7c605a24
+kubernetes_openstack_internal_network: k8s-net
+# 기존 Vault 네 값은 유지합니다. CCM 자격 증명은 실행 노드의 환경변수로만 전달합니다.
+kubernetes_openstack_application_credential_id: "{{ lookup('ansible.builtin.env', 'OS_APPLICATION_CREDENTIAL_ID') }}"
+kubernetes_openstack_application_credential_secret: "{{ lookup('ansible.builtin.env', 'OS_APPLICATION_CREDENTIAL_SECRET') }}"
+kubernetes_addon_timeout: 600 # 이미지 다운로드·초기 조정 대기 시간(초)
+kubernetes_network_check_image: docker.io/library/busybox:1.37.0
 
 # 별도 LB VM 없이 CP 3대에 HAProxy와 Keepalived를 함께 설치합니다.
 kubernetes_manage_api_lb: true

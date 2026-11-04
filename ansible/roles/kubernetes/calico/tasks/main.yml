@@ -1,0 +1,103 @@
+---
+- name: Create versioned Calico manifest directory
+  ansible.builtin.file:
+    path: "/etc/kubernetes/addons/calico-{{ kubernetes_calico_version }}"
+    state: directory
+    mode: '0700'
+
+# Kubernetes 1.36에 맞는 Calico v3 CRD와 공식 Operator를 같은 릴리스에서 가져옵니다.
+- name: Download pinned Calico manifests
+  ansible.builtin.get_url:
+    url: "https://raw.githubusercontent.com/projectcalico/calico/{{ kubernetes_calico_version }}/manifests/{{ item }}"
+    dest: "/etc/kubernetes/addons/calico-{{ kubernetes_calico_version }}/{{ item }}"
+    mode: '0600'
+    timeout: 60
+  loop:
+    - v3_projectcalico_org.yaml
+    - tigera-operator.yaml
+
+# 큰 CRD 스키마가 last-applied annotation의 크기 제한에 걸리지 않도록 SSA로 적용합니다.
+- name: Check Calico CRD changes
+  ansible.builtin.command:
+    argv:
+      - kubectl
+      - --kubeconfig
+      - /etc/kubernetes/admin.conf
+      - diff
+      - --server-side
+      - --field-manager=dangubi-calico-bootstrap
+      - -f
+      - "/etc/kubernetes/addons/calico-{{ kubernetes_calico_version }}/v3_projectcalico_org.yaml"
+  register: kubernetes_calico_crd_diff
+  failed_when: kubernetes_calico_crd_diff.rc not in [0, 1]
+  changed_when: false
+
+- name: Apply Calico v3 custom resource definitions
+  ansible.builtin.command:
+    argv:
+      - kubectl
+      - --kubeconfig
+      - /etc/kubernetes/admin.conf
+      - apply
+      - --server-side
+      - --field-manager=dangubi-calico-bootstrap
+      - -f
+      - "/etc/kubernetes/addons/calico-{{ kubernetes_calico_version }}/v3_projectcalico_org.yaml"
+  register: kubernetes_calico_crds
+  when: kubernetes_calico_crd_diff.rc == 1
+  changed_when: true
+
+- name: Apply official Tigera Operator
+  ansible.builtin.command:
+    argv:
+      - kubectl
+      - --kubeconfig
+      - /etc/kubernetes/admin.conf
+      - apply
+      - -f
+      - "/etc/kubernetes/addons/calico-{{ kubernetes_calico_version }}/tigera-operator.yaml"
+  register: kubernetes_calico_operator
+  changed_when: "'created' in kubernetes_calico_operator.stdout or 'configured' in kubernetes_calico_operator.stdout"
+
+- name: Wait for Tigera Operator deployment
+  ansible.builtin.command:
+    argv: [kubectl, --kubeconfig, /etc/kubernetes/admin.conf, -n, tigera-operator, rollout, status,
+           deployment/tigera-operator, "--timeout={{ kubernetes_addon_timeout }}s"]
+  changed_when: false
+
+# Operator가 관리하는 CRD가 등록된 뒤 Installation을 생성해야 합니다.
+- name: Wait for Installation API registration
+  ansible.builtin.command:
+    argv: [kubectl, --kubeconfig, /etc/kubernetes/admin.conf, wait, --for=condition=Established,
+           crd/installations.operator.tigera.io, "--timeout={{ kubernetes_addon_timeout }}s"]
+  register: kubernetes_installation_api
+  until: kubernetes_installation_api.rc == 0
+  retries: 12
+  delay: 5
+  changed_when: false
+
+- name: Configure Calico VXLAN networking
+  ansible.builtin.command:
+    argv: [kubectl, --kubeconfig, /etc/kubernetes/admin.conf, apply, -f, '-']
+    stdin: "{{ lookup('ansible.builtin.template', 'installation.yml.j2') }}"
+  register: kubernetes_calico_installation
+  changed_when: "'created' in kubernetes_calico_installation.stdout or 'configured' in kubernetes_calico_installation.stdout"
+
+- name: Wait for Calico status resource
+  ansible.builtin.command:
+    argv: [kubectl, --kubeconfig, /etc/kubernetes/admin.conf, get, tigerastatus/calico, -o, name]
+  register: kubernetes_calico_status
+  until: kubernetes_calico_status.rc == 0
+  retries: "{{ (kubernetes_addon_timeout | int / 5) | int }}"
+  delay: 5
+  changed_when: false
+
+- name: Wait for healthy Calico networking
+  ansible.builtin.command:
+    argv: [kubectl, --kubeconfig, /etc/kubernetes/admin.conf, wait, "--for=condition={{ item }}",
+           tigerastatus/calico, "--timeout={{ kubernetes_addon_timeout }}s"]
+  loop:
+    - Available=True
+    - Progressing=False
+    - Degraded=False
+  changed_when: false

@@ -52,8 +52,13 @@
   roles:
     - kubernetes/join
 
-- name: Verify node registration
+# CCM은 hostNetwork로 먼저 시작하므로 CNI나 CoreDNS 준비를 기다리지 않습니다.
+- name: Install cluster networking and verify readiness
   hosts: kubernetes_control_plane[0]
   become: true
+  any_errors_fatal: true
   roles:
+    - role: kubernetes/ccm
+      when: kubernetes_external_cloud_provider | bool
+    - kubernetes/calico
     - kubernetes/verify

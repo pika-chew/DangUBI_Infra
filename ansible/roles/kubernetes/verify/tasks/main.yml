@@ -1,16 +1,45 @@
 ---
-# CNI/CCM은 별도 레포에서 설치하므로 여기서는 Ready가 아닌 노드 등록 여부까지 확인합니다.
-- name: Read registered nodes
-  ansible.builtin.command: kubectl --kubeconfig /etc/kubernetes/admin.conf get nodes -o json
-  register: kubernetes_registered_nodes
+- name: Verify API readiness through the shared endpoint
+  ansible.builtin.command: kubectl --kubeconfig /etc/kubernetes/admin.conf get --raw=/readyz
   changed_when: false
-  until: >-
-    groups['kubernetes'] | difference((kubernetes_registered_nodes.stdout | from_json)['items'] | map(attribute='metadata.name') | list) | length == 0
-  retries: 20
-  delay: 3
 
-- name: Explain remaining platform bootstrap
+- name: Wait for all inventory nodes to become Ready
+  ansible.builtin.command:
+    argv: "{{ ['kubectl', '--kubeconfig', '/etc/kubernetes/admin.conf', 'wait', '--for=condition=Ready', '--timeout=' + (kubernetes_addon_timeout | string) + 's'] + (groups['kubernetes'] | map('regex_replace', '^', 'node/') | list) }}"
+  changed_when: false
+
+# Ready만으로 CCM 초기화 성공을 판단하지 않습니다. 실제 VM UUID와 InternalIP까지 비교합니다.
+- name: Check node readiness addresses and cloud identity
+  ansible.builtin.command:
+    argv:
+      - python3
+      - -c
+      - "{{ lookup('ansible.builtin.file', role_path + '/files/check_nodes.py') }}"
+    stdin: >-
+      {{ {'expected': dict(groups['kubernetes'] | zip(groups['kubernetes'] | map('extract', hostvars, 'kubernetes_node_ip'))),
+          'provider_ids': (kubernetes_openstack_preflight.stdout | from_json) if kubernetes_external_cloud_provider else {}} | to_json }}
+  register: kubernetes_initialized_nodes
+  until: kubernetes_initialized_nodes.rc == 0
+  retries: "{{ (kubernetes_addon_timeout | int / 5) | int }}"
+  delay: 5
+  changed_when: false
+
+- name: Wait for core networking workloads
+  ansible.builtin.command:
+    argv: [kubectl, --kubeconfig, /etc/kubernetes/admin.conf, -n, "{{ item.namespace }}", rollout, status,
+           "{{ item.workload }}", "--timeout={{ kubernetes_addon_timeout }}s"]
+  loop:
+    - { namespace: kube-system, workload: daemonset/kube-proxy }
+    - { namespace: calico-system, workload: daemonset/calico-node }
+    - { namespace: kube-system, workload: deployment/coredns }
+  changed_when: false
+
+- name: Verify worker Pod networking and DNS
+  ansible.builtin.import_tasks: network.yml
+
+- name: Report cluster bootstrap verification
   ansible.builtin.debug:
     msg: >-
-      노드 등록을 확인했습니다. CNI, 필요한 CCM, CSI, MetalLB, Argo CD는 별도 레포에서 구성하세요.
-      CNI 미설치 또는 external cloud provider에서 CCM 미설치 상태이면 NotReady나 미초기화 taint가 남습니다.
+      노드 7대 Ready, InternalIP, Calico·kube-proxy·CoreDNS 및 Worker 간 Pod 통신·Service DNS를 확인했습니다.
+      external cloud provider 사용 시 OpenStack providerID와 미초기화 taint 해제도 확인했습니다.
+      Cinder CSI, MetalLB, Argo CD와 애플리케이션은 후속 구성 대상입니다.

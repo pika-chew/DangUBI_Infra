@@ -1,0 +1,66 @@
+---
+# Calico 3.33의 CRD 형식과 현재 데이터플레인 조합만 지원합니다.
+- name: Require supported addon configuration
+  ansible.builtin.assert:
+    that:
+      - kubernetes_cni == 'calico'
+      - kubernetes_calico_version == 'v3.33.0'
+      - kubernetes_version is version('1.36.0', '>=')
+      - kubernetes_version is version('1.37.0', '<')
+      - kubernetes_calico_dataplane == 'Iptables'
+      - kubernetes_calico_encapsulation == 'VXLAN'
+      - kubernetes_calico_bgp == 'Disabled'
+      - kubernetes_calico_mtu | int >= 576
+      - kubernetes_calico_mtu | int + 50 <= kubernetes_nic_mtu | int
+      - kubernetes_addon_timeout | int >= 60
+      - kubernetes_network_check_image | length > 0
+      - not kubernetes_external_cloud_provider or kubernetes_ccm_version == 'v1.36.0'
+    fail_msg: 현재 bootstrap은 Kubernetes 1.36·Calico v3.33.0·CCM v1.36.0과 IPv4 VXLAN/Iptables 조합을 지원합니다.
+
+- name: Require OpenStack application credential environment
+  ansible.builtin.assert:
+    that:
+      - kubernetes_openstack_application_credential_id | length > 0
+      - kubernetes_openstack_application_credential_secret | length > 0
+      - "'\n' not in kubernetes_openstack_application_credential_id"
+      - "'\n' not in kubernetes_openstack_application_credential_secret"
+      - kubernetes_openstack_auth_url is match('^https?://')
+      - kubernetes_openstack_project_id | length > 0
+      - kubernetes_openstack_region | length > 0
+      - kubernetes_openstack_internal_network | length > 0
+    fail_msg: Jenkins에서 OS_APPLICATION_CREDENTIAL_ID와 OS_APPLICATION_CREDENTIAL_SECRET을 export하고 OpenStack 설정을 확인하세요.
+  when: kubernetes_external_cloud_provider | bool
+  no_log: true
+
+# 실제 CCM이 실행될 CP 각각에서 인증·Nova·Neutron 조회를 검사합니다.
+# Secret은 stdin으로 전달하고 실패 응답과 모듈 인자도 로그에 남기지 않습니다.
+- name: Validate OpenStack node discovery before changing VMs
+  when:
+    - kubernetes_external_cloud_provider | bool
+    - inventory_hostname in groups['kubernetes_control_plane']
+  block:
+    - name: Check Keystone Nova and Neutron read access
+      ansible.builtin.command:
+        argv:
+          - python3
+          - -c
+          - "{{ lookup('ansible.builtin.file', role_path + '/files/openstack_check.py') }}"
+        stdin: >-
+          {{ {'auth_url': kubernetes_openstack_auth_url,
+              'region': kubernetes_openstack_region, 'project_id': kubernetes_openstack_project_id,
+              'credential_id': kubernetes_openstack_application_credential_id,
+              'secret': kubernetes_openstack_application_credential_secret,
+              'nodes': dict(groups['kubernetes'] | zip(groups['kubernetes'] | map('extract', hostvars, 'kubernetes_node_ip')))} | to_json }}
+      register: kubernetes_openstack_preflight
+      changed_when: false
+      no_log: true
+      vars:
+        ansible_ssh_pipelining: true
+  rescue:
+    - name: Explain failed cloud preflight without credentials
+      ansible.builtin.fail:
+        msg: >-
+          CCM 사전 검증 실패: 자격 증명의 프로젝트·리전과 Nova VM/Flavor 조회,
+          Neutron 포트 조회 권한 및 CP에서의 API 접근을 확인하세요.
+          오류 유형: {{ (kubernetes_openstack_preflight.stderr | default('') | regex_search('HTTP [0-9]{3}')) | default('연결 또는 클라우드 정보 불일치', true) }}.
+          VM 설정은 아직 변경하지 않았습니다.

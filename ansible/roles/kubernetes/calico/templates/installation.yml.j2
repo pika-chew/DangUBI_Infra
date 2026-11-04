@@ -1,0 +1,21 @@
+apiVersion: operator.tigera.io/v1
+kind: Installation
+metadata:
+  name: default
+spec:
+  variant: Calico
+  cni:
+    type: Calico
+  calicoNetwork:
+    linuxDataplane: {{ kubernetes_calico_dataplane }}
+    bgp: {{ kubernetes_calico_bgp }}
+    mtu: {{ kubernetes_calico_mtu }}
+    nodeAddressAutodetectionV4:
+      kubernetes: NodeInternalIP
+    ipPools:
+      - name: default-ipv4-ippool
+        cidr: {{ kubernetes_pod_cidr }}
+        blockSize: 26
+        encapsulation: {{ kubernetes_calico_encapsulation }}
+        natOutgoing: Enabled
+        nodeSelector: all()

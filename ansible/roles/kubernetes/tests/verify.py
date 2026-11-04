@@ -88,7 +88,9 @@ with tempfile.TemporaryDirectory(prefix="ubi-kubernetes-verify-") as directory:
         "site[4].serial == 1",
         "site[5].hosts == 'kubernetes_workers'",
         "site[5].serial == 1",
-        "site[6].roles == ['kubernetes/verify']",
+        "site[6].roles[0].role == 'kubernetes/ccm'",
+        "site[6].roles[0].when == 'kubernetes_external_cloud_provider | bool'",
+        "site[6].roles[1:] == ['kubernetes/calico', 'kubernetes/verify']",
     ]}})
     cases = [
         ("control_plane/templates/init.yml.j2", "init-external.yml", {"inventory_hostname": "cp1"}),
@@ -173,3 +175,5 @@ with tempfile.TemporaryDirectory(prefix="ubi-kubernetes-verify-") as directory:
         if not expected:
             assert "빈 변수로는 설치를 시작하지 않습니다" in result.stdout + result.stderr
     print("PASS: preflight rejects missing version/CCM choice, wrong MTU, unprepared external LB")
+
+subprocess.run(["python3", str(ROLE / "tests/verify_addons.py")], check=True)

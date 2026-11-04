@@ -1,0 +1,13 @@
+[Global]
+auth-url = {{ kubernetes_openstack_auth_url | to_json }}
+region = {{ kubernetes_openstack_region | to_json }}
+application-credential-id = {{ kubernetes_openstack_application_credential_id | to_json }}
+application-credential-secret = {{ kubernetes_openstack_application_credential_secret | to_json }}
+
+[Networking]
+internal-network-name = {{ kubernetes_openstack_internal_network | to_json }}
+ipv6-support-disabled = true
+
+# Service 제어는 MetalLB가 담당하므로 Octavia 클라이언트도 비활성화합니다.
+[LoadBalancer]
+enabled = false

@@ -4,3 +4,6 @@
 
 - name: Validate each node before making changes
   ansible.builtin.import_tasks: node.yml
+
+- name: Validate networking and cloud bootstrap inputs
+  ansible.builtin.import_tasks: addons.yml
