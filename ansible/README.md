@@ -120,5 +120,24 @@ ansible-playbook playbooks/alloy.yml --limit monitoring --ask-vault-pass
 - 전송: `alloy_remote_write_url`로 remote write, 모든 메트릭에 `env`·`cluster` 라벨 추가
 - 그룹별 설정(`alloy_cluster`, `alloy_remote_write_url`): `inventory/group_vars/<그룹>/vars.yml`
 - 설정 파일: `/etc/alloy/config.alloy` (배포 전 `alloy fmt`로 문법 검사)
+- 외부 exporter 수집: 호스트별 `alloy_scrape_jobs`(`inventory/hosts.yml`)에 지정한 주소를 scrape. `instance` 라벨은 호스트명
+  - OpenStack 노드는 Kolla-Ansible이 띄운 exporter를 수집 (아래 표)
 - 네트워크 메트릭에서 가상 인터페이스(docker veth, OpenStack tap/qvo/qvb/qbr) 제외: `alloy_netdev_device_exclude`
 - 디버깅 UI: `127.0.0.1:12345` (외부 미노출, `ssh -L 12345:localhost:12345`로 접속)
+
+### Kolla-Ansible exporter (OpenStack 서비스 메트릭)
+
+OpenStack 노드의 `/etc/kolla/globals.yml`에서 Prometheus 서버·Alertmanager·node_exporter 등은 끄고 exporter만 켭니다. exporter는 Kolla 관리망(`10.10.0.x`)에만 열리므로 각 노드의 Alloy가 자기 노드의 exporter를 수집합니다.
+
+| job | 포트 | 노드 | 내용 |
+|---|---|---|---|
+| `mysqld` | 9104 | os-ctl1~3 | MariaDB(Galera) 연결·쿼리·동기화 상태 |
+| `rabbitmq` | 15692 | os-ctl1~3 | RabbitMQ 내장 플러그인. 큐 적체, 연결 수 |
+| `libvirt` | 9177 | os-ctl1~3, os-cmp1 | VM별 CPU·메모리·디스크 |
+| `openstack` | 9198 | os-ctl1 | OpenStack API 상태, VM·자원 현황. 60초 간격 |
+
+```bash
+# OpenStack 노드(os-ctl1, ~/kolla-deploy)에서. Kolla 인벤토리 [monitoring]에 os-ctl1 추가 후
+kolla-ansible deploy -i multinode -t prometheus --ask-become-pass
+kolla-ansible reconfigure -i multinode -t rabbitmq --ask-become-pass   # RabbitMQ 재시작 주의
+```
