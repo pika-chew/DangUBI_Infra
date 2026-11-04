@@ -22,6 +22,23 @@ prometheus.scrape "alloy" {
   scrape_interval = "{{ alloy_scrape_interval }}"
 }
 
+{% for job in alloy_scrape_jobs %}
+// 외부 exporter: {{ job.name }}
+// instance는 호스트 메트릭과 맞추기 위해 주소 대신 호스트명 사용
+prometheus.scrape "{{ job.name }}" {
+  targets = [{
+    "__address__" = "{{ job.address }}",
+    "instance"    = "{{ inventory_hostname }}",
+  }]
+  job_name        = "{{ job.name }}"
+  forward_to      = [prometheus.remote_write.default.receiver]
+  scrape_interval = "{{ job.interval | default(alloy_scrape_interval) }}"
+{% if job.timeout is defined %}
+  scrape_timeout  = "{{ job.timeout }}"
+{% endif %}
+}
+
+{% endfor %}
 prometheus.remote_write "default" {
   endpoint {
     url = "{{ alloy_remote_write_url }}"
