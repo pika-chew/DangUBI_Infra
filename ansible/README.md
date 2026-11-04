@@ -104,7 +104,7 @@ ansible-playbook playbooks/monitoring.yml --ask-vault-pass
 
 OpenStack VM 위에 kubeadm + containerd로 단일 Kubernetes 클러스터를 구성합니다.
 role은 OS·containerd 준비, 첫 Control Plane의 init, 나머지 Control Plane과 Worker의
-순차 join을 수행합니다. VM이 아직 없으므로 실제 클러스터 구축은 검증 전입니다.
+순차 join을 수행합니다. VM 생성과 SSH/sudo 접속은 확인했으며, 실제 클러스터 구축은 검증 전입니다.
 빈 설정값으로는 설치를 시작하지 않습니다.
 
 - Control Plane VM 3대: ctl1·ctl2·ctl3에 각각 배치, stacked etcd 구성
@@ -114,8 +114,8 @@ role은 OS·containerd 준비, 첫 Control Plane의 init, 나머지 Control Plan
 - Roles: `roles/kubernetes/` 아래 기능별 role
 - Playbook: `playbooks/kubernetes/site.yml`
 - Inventory: 기존 `inventory/hosts.yml`의 `kubernetes` 그룹
-- 공통 설정: `inventory/group_vars/kubernetes.yml`
-- 대상 OS: Ubuntu 22.04/24.04, systemd, IPv4. 다른 OS와 IPv6는 현재 지원 범위에 포함하지 않음
+- 공통 설정: `inventory/group_vars/kubernetes/vars.yml`
+- 대상 OS: Ubuntu 24.04, systemd, IPv4. 다른 OS와 IPv6는 현재 지원 범위에 포함하지 않음
 
 ### Role 구조와 실행 순서
 
@@ -142,12 +142,12 @@ CP의 API LB → 첫 CP 초기화 → 추가 CP 순차 가입 → Worker 순차 
 첫 CP는 inventory의 `kubernetes_control_plane` 그룹에서 첫 번째로 등록한 VM입니다.
 추가 CP play는 `[1:]`로 첫 CP를 제외하며, `serial: 1`로 etcd 멤버를 한 대씩 추가합니다.
 템플릿과 handler는 사용하는 role 안에 두고, 공통 입력값과 기본 설정은
-`inventory/group_vars/kubernetes.yml` 한 곳에서 관리합니다.
+`inventory/group_vars/kubernetes/vars.yml` 한 곳에서 관리합니다.
 
 ### Inventory와 실행 전 확인
 
-VM 생성 전이므로 Control Plane과 Worker 그룹은 비어 있고, 임시 VM 항목은 주석으로만 작성했습니다.
-VM 생성 후 해당 그룹의 `hosts: {}`를 `hosts:`로 바꾸고 예시 항목을 활성화합니다.
+Control Plane 3대와 Worker 4대의 실제 IP·물리 호스트 배치를 등록했습니다.
+사설망 NIC는 7대 모두 `ens3`, NIC MTU는 `1450`으로 확인했습니다.
 `ansible_host`에는 jenkins-vm에서 SSH로 접근할 주소를 지정합니다.
 SSH 접속 IP와 Kubernetes 내부 통신 IP는 다를 수 있습니다.
 각 VM에 `kubernetes_node_ip`, `kubernetes_physical_host`, `kubernetes_interface`,
@@ -162,24 +162,53 @@ jenkins-vm의 SSH 키와 대상 VM의 sudo 권한, host key 등록이 필요합�
 
 ```bash
 ansible-inventory --graph
-ansible-playbook playbooks/kubernetes/site.yml --syntax-check
+ansible-playbook playbooks/kubernetes/site.yml --syntax-check --ask-vault-pass
 
 # VM을 inventory에 등록하고 SSH 접속을 준비한 후 실행
-ansible kubernetes -m ping
+ansible kubernetes -m ping --ask-vault-pass
 ```
 
 `ping` 모듈은 ICMP ping이 아니라 SSH 접속과 대상 Python 실행을 확인합니다.
-현재는 등록된 Kubernetes 호스트가 없으므로 실제 접속·설치 검증은 수행할 수 없습니다.
+SSH/Python 실행과 sudo 권한은 7대에서 확인했으며, 클러스터 설치·통신 검증은 별도로 수행합니다.
+
+### 비공개 변수와 Vault
+
+일반 설정은 `inventory/group_vars/kubernetes/vars.yml`에 두고, 다음 네 값만
+같은 디렉터리의 `vault.yml`에 `vault_` 접두어로 저장합니다.
+
+- `vault_ansible_ssh_private_key_file`: Jenkins VM에서 사용하는 SSH 개인키 경로
+- `vault_kubernetes_node_cidr`: 실제 VM 사설망 CIDR
+- `vault_kubernetes_pod_cidr`: Calico IPPool과 kubeadm에서 사용할 Pod CIDR
+- `vault_kubernetes_service_cidr`: 선택한 `/16` Service CIDR
+
+`vault.yml.example`은 값이 비어 있는 변수 이름 안내이며, 자동 로딩 대상이 아닙니다.
+저장소에는 실제 암호화된 `vault.yml`이 아직 없으므로, 사용하는 환경에서 최초 1회 생성해야 합니다.
+기존 `group_vars/kubernetes.yml`과 새 디렉터리를 동시에 유지하지 않습니다.
+기존 파일은 삭제하고 디렉터리 구조로 옮겼으므로 브랜치 업데이트 시 삭제도 함께 반영합니다.
+
+```bash
+# 비밀번호는 로컬 프롬프트에서 직접 입력하고, 편집기에 네 변수를 작성합니다.
+ansible-vault create inventory/group_vars/kubernetes/vault.yml
+
+# 이후 수정도 복호화된 평문 파일을 따로 만들지 않고 수행합니다.
+ansible-vault edit inventory/group_vars/kubernetes/vault.yml
+```
+
+파일 첫 줄이 `$ANSIBLE_VAULT;`로 시작하는지 확인한 뒤 암호화된 파일만 커밋합니다.
+Vault 비밀번호와 SSH 개인키 자체는 저장소에 넣지 않습니다.
+Vault 파일을 참조하는 Kubernetes 명령에는 `--ask-vault-pass`를 사용합니다.
+실제 변수 내용이 출력되는 `ansible-inventory --host/--list`, debug, diff 결과를 공개하지 않습니다.
+이 범위는 지정한 네 변수만 보호합니다. inventory의 노드 IP·물리 배치와 과거 Git 기록은 그대로입니다.
 
 ### 구축 전 확정할 항목
 
 - VM의 OS·사양·사설 IP·네트워크 인터페이스, Kubernetes/containerd 버전
 - CNI, Pod CIDR, Service CIDR, VM NIC MTU와 CNI의 MTU
 - HAProxy·Keepalived 설치 위치, API VIP/FIP, 인증서, 보안그룹과 VIP 전환
-- OpenStack CCM 사용 여부와 LoadBalancer Service 관리 범위
+- OpenStack CCM의 노드 연동 사용, Service·Route 컨트롤러 비활성화 설정
 - Cinder·local PV용 디스크와 마운트 경로, OpenStack 접근 정보
 
-`inventory/group_vars/kubernetes.yml`의 빈 값을 채운 뒤 실행합니다.
+`inventory/group_vars/kubernetes/vars.yml`의 빈 값을 채운 뒤 실행합니다.
 Kubernetes는 `kubernetes_version`과 APT의 정확한 `kubernetes_package_version`을 함께 지정하고,
 containerd도 `kubernetes_containerd_package_version`에 저장소의 정확한 `containerd.io` 버전을 지정합니다.
 role은 Docker Engine을 설치하지 않습니다. containerd 1.x/2.x에 맞춰 설정 스키마를 구분하며,
@@ -187,7 +216,33 @@ Kubernetes 패키지는 kubeadm v1beta4 설정을 지원하는 1.31 이상을 �
 이 하한은 해당 버전의 운영 지원 또는 최신 버전과의 호환성을 보장한다는 뜻은 아닙니다.
 구축 시점에 지원되는 Kubernetes/containerd/CNI 조합을 선택해야 합니다.
 
+현재 선택한 초기 구축 조합은 Kubernetes `1.36.5`(APT `1.36.5-1.1`),
+containerd `2.3.6` LTS(APT `2.3.6-1~ubuntu.24.04~noble`), Calico `v3.33.0`입니다.
+Calico 3.33의 테스트 범위에 Kubernetes 1.36이 포함되고, containerd 2.3은 Kubernetes 1.36의
+권장 호환 범위에 포함됩니다. 이는 공식 문서상의 호환 범위이며 실제 VM 설치·통신 검증은 아직 수행하지 않았습니다.
+Kubernetes 패키지는 amd64/arm64 등, 위 containerd 패키지는 Ubuntu 24.04 amd64 저장소에서 존재를 확인했습니다.
+
+Calico는 별도 레포에서 일반 Linux `Iptables` 데이터플레인, kube-proxy 유지,
+IPv4 VXLAN Always, BGP 비활성화, workload/tunnel MTU `1400`으로 구성할 계획입니다.
+노드 간 UDP 4789를 허용하고, Pod CIDR을 kubeadm과 Calico IPPool에서 일치시킵니다.
+`inventory/group_vars/kubernetes/vars.yml`의 `kubernetes_cni`와 `kubernetes_calico_*`는 이 선택을
+기록한 참조값이며, 이 Ansible role이 소비해 CNI를 자동 설치하는 변수는 아닙니다.
+Calico 설치 시 기본값에 의존하지 않고 `Installation.spec.calicoNetwork.linuxDataplane: Iptables`,
+`bgp: Disabled`, `ipPools[].encapsulation: VXLAN`, `mtu: 1400`을 명시해야 합니다.
+MTU 1400은 경로 MTU 1450·IPv4 VXLAN·추가 암호화 없음이라는 전제이며 실제 Pod 통신으로 확인합니다.
+Pod·Service CIDR 값은 Vault에 저장하며, Service CIDR 크기는 `/16`으로 선택했습니다.
+연결할 다른 네트워크와 CIDR 충돌이 없음을 사용자 확인했습니다.
+
+근거: [Calico 요구사항](https://docs.tigera.io/calico/3.33/getting-started/kubernetes/requirements),
+[containerd 호환표와 LTS](https://containerd.io/releases/),
+[Kubernetes 릴리스](https://kubernetes.io/releases/),
+[Calico MTU](https://docs.tigera.io/calico/latest/networking/configuring/mtu).
+
 API LB 배치는 다음 중 하나로 선택합니다.
+
+현재 선택은 CP 공동 설치이며, `kubernetes_manage_api_lb: true`로 설정했습니다.
+API VIP의 VRRP router ID는 `51`이며 CP 3대가 같은 값을 사용합니다.
+별도 LB VM은 만들지 않으며 VIP 예약·허용 주소·보안그룹·FIP 연결은 OpenStack에서 준비합니다.
 
 - 별도 LB: `kubernetes_manage_api_lb: false`를 유지하고, LB 준비와 endpoint 도달성을 확인한 후
   `kubernetes_api_endpoint_ready: true`로 설정
@@ -198,7 +253,7 @@ API LB 배치는 다음 중 하나로 선택합니다.
 FIP 연결, TCP 포트와 VRRP(IP protocol 112) 허용은 별도 OpenStack 작업입니다.
 role은 보안그룹을 바꾸거나 방화벽을 해제하지 않습니다.
 
-CIDR은 `172.16.10.0/24`처럼 IP 주소 범위를 나타냅니다. 노드·Pod·Service 주소 대역은
+CIDR은 `192.0.2.0/24`처럼 IP 주소 범위를 나타냅니다. 노드·Pod·Service 주소 대역은
 서로 겹치지 않게 정하고, 연결할 사내망·VPN 대역과의 충돌도 확인합니다.
 NIC MTU는 네트워크 인터페이스가 전달할 수 있는 IP 패킷의 최대 바이트 크기입니다.
 CNI 캡슐화에는 추가 공간이 필요할 수 있으므로 기존 Docker MTU를 그대로 적용하지 않습니다.
@@ -209,7 +264,7 @@ CNI의 MTU 설정과 사내망·VPN 대역 충돌 확인은 별도로 수행합�
 
 ```bash
 # VM 등록·변수 입력·SSH/sudo·OpenStack 네트워크 준비 후 전체 클러스터 실행
-ansible-playbook playbooks/kubernetes/site.yml
+ansible-playbook playbooks/kubernetes/site.yml --ask-vault-pass
 
 # VM에 접속하지 않는 로컬 검증. Python 3.11 이상과 Ansible 필요
 python3 roles/kubernetes/tests/verify.py
@@ -227,7 +282,7 @@ python3 roles/kubernetes/tests/verify.py
 join token은 단기 발급 후 회수하고, 임시 join 설정은 성공·실패 시 삭제합니다.
 
 role의 마지막 검증은 API 응답과 7개 노드의 등록입니다. CNI 설치 전의 `NotReady`는 정상적인 중간 상태이며,
-CCM 사용을 선택했다면 CCM 설치 전에는 미초기화 taint도 남을 수 있습니다.
+현재 `kubernetes_external_cloud_provider: true`이므로 CCM 설치 전에는 미초기화 taint가 남습니다.
 CNI/CCM 구성 후 `kubectl get nodes`의 Ready 상태와 실제 Pod 통신·DNS를 별도로 검증해야 합니다.
 
 ### 클러스터 초기 구성과 서비스 배포
@@ -253,9 +308,12 @@ OpenStack CCM은 노드의 클라우드 정보 연동 등을 담당하며, Servi
 Cinder 볼륨의 생성·연결은 별도 구성 요소인 Cinder CSI 드라이버의 역할입니다.
 
 현재 설계에서 LoadBalancer Service는 Query API용 `query-svc`이며, MetalLB가 VIP 할당과
-L2 광고를 담당하는 안입니다. Kubernetes API 앞의 HAProxy·Keepalived는 별도 진입점입니다.
-CCM을 도입하더라도 동일한 `query-svc`를 CCM과 MetalLB가 중복 처리하지 않도록
-설치 버전에 맞춰 Service 컨트롤러 비활성화 또는 지원되는 클래스 구분 등을 설정해야 합니다.
+L2 광고를 담당합니다. Kubernetes API 앞의 HAProxy·Keepalived는 별도 진입점입니다.
+CCM은 `cloud-node`와 `cloud-node-lifecycle` 컨트롤러만 사용합니다.
+Service 컨트롤러는 MetalLB와의 중복 관리를 피하기 위해, Route 컨트롤러는 Calico VXLAN을 사용하므로 비활성화합니다.
+Keystone 인증 주소는 `http://10.10.0.10:5000`, 리전은 `RegionOne`입니다.
+`ubi` 프로젝트의 `reader` 애플리케이션 자격 증명으로 인증과 Kubernetes VM 7대 조회를 확인했습니다.
+자격 증명 ID·Secret은 이 설정에 포함하지 않으며, 별도 레포의 CCM 배포 시 안전하게 주입합니다.
 MetalLB의 L2 광고와 FIP 연결은 실제 Neutron 환경에서 동작을 검증해야 합니다.
 
 참고: [Kubernetes CCM](https://kubernetes.io/docs/concepts/architecture/cloud-controller/),
