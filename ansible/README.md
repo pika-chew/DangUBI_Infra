@@ -97,10 +97,22 @@ ansible-playbook playbooks/monitoring.yml --ask-vault-pass
 - 설정 파일이 바뀌면 해당 컨테이너만 재시작(handler)
 - Grafana 관리자 비밀번호는 Grafana DB가 처음 만들어질 때만 적용됨
 
-### Alloy (모니터링 VM 자기 감시)
+### Alloy
+
+모니터링 VM(자기 감시)과 OpenStack 물리 노드에 Alloy를 설치합니다.
+
+| 그룹 | 호스트 | `cluster` 라벨 | 전송 주소 |
+|---|---|---|---|
+| `monitoring` | observability-vm | `observability-vm` | `localhost:9090` |
+| `openstack_nodes` | os-ctl1~3, os-cmp1 | `openstack` | `10.20.0.140:9090` (같은 내부망이라 직접 전송) |
 
 ```bash
-ansible-playbook playbooks/alloy.yml --ask-vault-pass
+# 최초 1회: jenkins-vm의 SSH 키를 물리 노드에 등록
+ssh-copy-id pika1@10.20.0.2   # pika2@10.20.0.3, pika3@10.20.0.4, hong@10.20.0.5도 동일
+
+# 물리 노드는 sudo 비밀번호가 필요하므로 --ask-become-pass
+ansible-playbook playbooks/alloy.yml --limit openstack_nodes --ask-become-pass
+ansible-playbook playbooks/alloy.yml --limit monitoring --ask-vault-pass
 ```
 `alloy.yml`: Grafana 공식 APT 저장소로 Alloy를 설치하고 systemd 서비스로 실행
 
@@ -108,4 +120,5 @@ ansible-playbook playbooks/alloy.yml --ask-vault-pass
 - 전송: `alloy_remote_write_url`로 remote write, 모든 메트릭에 `env`·`cluster` 라벨 추가
 - 그룹별 설정(`alloy_cluster`, `alloy_remote_write_url`): `inventory/group_vars/<그룹>/vars.yml`
 - 설정 파일: `/etc/alloy/config.alloy` (배포 전 `alloy fmt`로 문법 검사)
+- 네트워크 메트릭에서 가상 인터페이스(docker veth, OpenStack tap/qvo/qvb/qbr) 제외: `alloy_netdev_device_exclude`
 - 디버깅 UI: `127.0.0.1:12345` (외부 미노출, `ssh -L 12345:localhost:12345`로 접속)
