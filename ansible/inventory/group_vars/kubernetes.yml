@@ -1,0 +1,29 @@
+---
+# VM 생성 후 빈 값을 채웁니다. 아래 값은 자동 추정하지 않습니다.
+kubernetes_version: "" # 예: 1.<minor>.<patch>, kubeadm v1beta4 지원 버전(1.31 이상)
+kubernetes_package_version: "" # pkgs.k8s.io의 정확한 패키지 버전, 예: 1.<minor>.<patch>-1.1
+kubernetes_containerd_package_version: "" # Docker Ubuntu 저장소의 containerd.io 정확한 버전
+kubernetes_node_cidr: "" # VM 사설망, 예: 172.16.10.0/24. 실제 서브넷으로 교체
+kubernetes_pod_cidr: "" # CNI 선택 후 지정
+kubernetes_service_cidr: ""
+kubernetes_api_endpoint: "" # 예: 172.16.10.10:16443. VIP/FIP 예약 확인 후 지정
+kubernetes_api_cert_sans: [] # 외부 접속용 FIP/DNS 등, 예: ['10.20.0.110']
+kubernetes_external_cloud_provider: null # CCM 사용 시 true, 사용하지 않으면 false
+
+# CP에 LB를 함께 설치하는 선택지입니다. 배치 확정 전에는 false로 둡니다.
+kubernetes_manage_api_lb: false
+kubernetes_api_endpoint_ready: false # 별도 LB 준비·도달성 확인 후에만 true
+kubernetes_api_vip: ""
+kubernetes_api_vip_prefix: null # 실제 VM 서브넷 prefix 길이
+kubernetes_vrrp_router_id: null # 동일 L2 내 다른 VRRP 그룹과 중복되지 않는 1~255
+
+# role을 나눠도 같은 접속 방식과 토큰 수명을 사용하도록 공통 설정을 한 곳에 둡니다.
+kubernetes_cri_socket: unix:///run/containerd/containerd.sock
+kubernetes_api_lb_port: 16443
+kubernetes_join_token_ttl: 15m
+
+# 각 VM의 hosts 항목에 다음 변수를 추가합니다.
+# kubernetes_node_ip: <VM의 사설 IP, ansible_host와 다를 수 있음>
+# kubernetes_physical_host: <ctl1 또는 ctl2 또는 ctl3 또는 cmp1>
+# kubernetes_interface: <사설망 NIC, 예: ens3>
+# kubernetes_nic_mtu: <실제 NIC MTU>

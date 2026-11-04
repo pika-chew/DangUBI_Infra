@@ -1,0 +1,33 @@
+---
+# API VIP용 LB입니다. Query Service의 MetalLB와는 별도로 동작합니다.
+- name: Install API load balancer packages
+  ansible.builtin.apt:
+    name: [haproxy, keepalived]
+    state: present
+
+- name: Configure API TCP load balancing
+  ansible.builtin.template:
+    src: haproxy.cfg.j2
+    dest: /etc/haproxy/haproxy.cfg
+    mode: '0644'
+    validate: haproxy -c -f %s
+  notify: Restart Kubernetes HAProxy
+
+- name: Configure unicast VIP failover
+  ansible.builtin.template:
+    src: keepalived.conf.j2
+    dest: /etc/keepalived/keepalived.conf
+    mode: '0600'
+    validate: keepalived -t -f %s
+  notify: Restart Kubernetes Keepalived
+
+- name: Enable API load balancer services
+  ansible.builtin.systemd_service:
+    name: "{{ item }}"
+    enabled: true
+    state: started
+  loop: [haproxy, keepalived]
+
+# 다음 play의 kubeadm init이 VIP를 사용하므로 재시작을 여기서 완료합니다.
+- name: Apply API load balancer changes before bootstrap
+  ansible.builtin.meta: flush_handlers

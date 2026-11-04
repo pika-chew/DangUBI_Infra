@@ -1,0 +1,59 @@
+---
+# VM이 아직 없더라도 실행 노드에서 inventory 검증을 수행해 빈 실행을 막습니다.
+- name: Validate initial cluster inventory
+  hosts: localhost
+  connection: local
+  become: false
+  gather_facts: false
+  any_errors_fatal: true
+  roles:
+    - kubernetes/inventory
+
+# 모든 노드의 검증이 끝난 뒤에만 OS·패키지·런타임을 변경합니다.
+- name: Prepare all Kubernetes nodes
+  hosts: kubernetes
+  become: true
+  any_errors_fatal: true
+  roles:
+    - kubernetes/preflight
+    - kubernetes/common
+    - kubernetes/packages
+    - kubernetes/containerd
+
+- name: Prepare API load balancers
+  hosts: kubernetes_control_plane
+  become: true
+  any_errors_fatal: true
+  roles:
+    - kubernetes/api_lb
+
+# inventory의 첫 CP만 새 클러스터를 만들고, 나머지 CP는 기존 클러스터에 가입합니다.
+- name: Initialize first control plane
+  hosts: kubernetes_control_plane[0]
+  become: true
+  any_errors_fatal: true
+  roles:
+    - kubernetes/control_plane
+
+# 첫 CP를 제외하고 한 대씩 가입시켜 etcd 멤버 추가가 겹치지 않게 합니다.
+- name: Join additional control planes
+  hosts: kubernetes_control_plane[1:]
+  become: true
+  serial: 1
+  any_errors_fatal: true
+  roles:
+    - kubernetes/join
+
+- name: Join worker nodes
+  hosts: kubernetes_workers
+  become: true
+  serial: 1
+  any_errors_fatal: true
+  roles:
+    - kubernetes/join
+
+- name: Verify node registration
+  hosts: kubernetes_control_plane[0]
+  become: true
+  roles:
+    - kubernetes/verify

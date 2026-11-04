@@ -1,0 +1,18 @@
+# kubelet과 containerd의 cgroup 관리자를 systemd로 일치시킵니다.
+version = {{ 3 if kubernetes_containerd_major | int == 2 else 2 }}
+
+{% if kubernetes_containerd_major | int == 2 %}
+[plugins.'io.containerd.cri.v1.images'.pinned_images]
+  sandbox = {{ (kubernetes_images.stdout_lines | select('search', '/pause:') | first) | to_json }}
+[plugins.'io.containerd.cri.v1.runtime'.containerd]
+{% else %}
+[plugins.'io.containerd.grpc.v1.cri']
+  sandbox_image = {{ (kubernetes_images.stdout_lines | select('search', '/pause:') | first) | to_json }}
+[plugins.'io.containerd.grpc.v1.cri'.containerd]
+{% endif %}
+  default_runtime_name = 'runc'
+{% set cri = 'io.containerd.cri.v1.runtime' if kubernetes_containerd_major | int == 2 else 'io.containerd.grpc.v1.cri' %}
+[plugins.'{{ cri }}'.containerd.runtimes.runc]
+  runtime_type = 'io.containerd.runc.v2'
+[plugins.'{{ cri }}'.containerd.runtimes.runc.options]
+  SystemdCgroup = true

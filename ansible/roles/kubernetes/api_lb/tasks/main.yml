@@ -1,0 +1,5 @@
+---
+# 별도 LB를 준비한 경우 CP의 HAProxy/Keepalived 설정은 건너뜁니다.
+- name: Configure co-located API load balancer when selected
+  ansible.builtin.import_tasks: configure.yml
+  when: kubernetes_manage_api_lb | bool

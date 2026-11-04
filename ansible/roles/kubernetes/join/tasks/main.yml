@@ -1,0 +1,85 @@
+---
+# CP와 Worker는 가입 절차를 공유하며, CP만 암호화된 인증서를 추가로 전달받습니다.
+- name: Join unregistered node
+  when: not kubernetes_already_joined | bool
+  vars:
+    kubernetes_primary: "{{ groups['kubernetes_control_plane'][0] }}"
+  block:
+    - name: Create short lived join token
+      ansible.builtin.command: "kubeadm token create --ttl {{ kubernetes_join_token_ttl }}"
+      delegate_to: "{{ kubernetes_primary }}"
+      register: kubernetes_join_token
+      no_log: true
+      changed_when: true
+
+    - name: Compute CA public key hash
+      ansible.builtin.shell: |
+        set -o pipefail
+        openssl x509 -pubkey -in /etc/kubernetes/pki/ca.crt -noout |
+        openssl pkey -pubin -outform DER | openssl dgst -sha256 -hex | awk '{print $NF}'
+      args:
+        executable: /bin/bash
+      delegate_to: "{{ kubernetes_primary }}"
+      register: kubernetes_ca_hash
+      changed_when: false
+
+    - name: Create certificate encryption key for control plane join
+      ansible.builtin.command: kubeadm certs certificate-key
+      delegate_to: "{{ kubernetes_primary }}"
+      register: kubernetes_certificate_key
+      when: inventory_hostname in groups['kubernetes_control_plane']
+      no_log: true
+      changed_when: false
+
+    - name: Upload encrypted certificates for this control plane join
+      ansible.builtin.command:
+        argv:
+          - kubeadm
+          - init
+          - phase
+          - upload-certs
+          - --upload-certs
+          - --certificate-key
+          - "{{ kubernetes_certificate_key.stdout | trim }}"
+      delegate_to: "{{ kubernetes_primary }}"
+      when: inventory_hostname in groups['kubernetes_control_plane']
+      no_log: true
+      changed_when: true
+
+    - name: Write temporary join configuration
+      ansible.builtin.template:
+        src: join.yml.j2
+        dest: /run/dangubi-kubeadm-join.yml
+        mode: '0600'
+      no_log: true
+
+    - name: Validate join configuration
+      ansible.builtin.command: kubeadm config validate --config /run/dangubi-kubeadm-join.yml
+      changed_when: false
+      no_log: true
+
+    - name: Join Kubernetes cluster
+      ansible.builtin.command: kubeadm join --config /run/dangubi-kubeadm-join.yml
+      no_log: true
+      changed_when: true
+
+    - name: Mark successful join
+      ansible.builtin.copy:
+        dest: /etc/kubernetes/dangubi-ansible-managed
+        content: "{{ kubernetes_api_endpoint }}\n"
+        mode: '0600'
+
+  # join 실패 시에도 토큰 파일을 삭제하고 발급 토큰을 회수합니다.
+  always:
+    - name: Remove join configuration containing credentials
+      ansible.builtin.file:
+        path: /run/dangubi-kubeadm-join.yml
+        state: absent
+
+    - name: Revoke generated join token
+      ansible.builtin.command:
+        argv: [kubeadm, token, delete, "{{ (kubernetes_join_token.stdout | trim).split('.')[0] }}"]
+      delegate_to: "{{ kubernetes_primary }}"
+      when: kubernetes_join_token.stdout | default('') | trim | length > 0
+      no_log: true
+      changed_when: true

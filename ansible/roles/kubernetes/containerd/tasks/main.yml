@@ -1,0 +1,45 @@
+---
+# containerd 1.x와 2.x는 CRI 설정 경로가 다릅니다. 실제 설치된 버전에 맞춰 렌더링합니다.
+- name: Inspect installed containerd major version
+  ansible.builtin.command: containerd --version
+  register: kubernetes_containerd_version_output
+  changed_when: false
+
+- name: Set containerd config schema
+  ansible.builtin.set_fact:
+    kubernetes_containerd_major: "{{ kubernetes_containerd_version_output.stdout | regex_search('[0-9]+(?=\\.[0-9]+\\.[0-9]+)') | int }}"
+
+- name: Require supported containerd schema
+  ansible.builtin.assert:
+    that: kubernetes_containerd_major | int in [1, 2]
+
+- name: Obtain matching Kubernetes pause image
+  ansible.builtin.command:
+    argv: [kubeadm, config, images, list, --kubernetes-version, "v{{ kubernetes_version }}"]
+  register: kubernetes_images
+  changed_when: false
+
+- name: Create containerd configuration directory
+  ansible.builtin.file:
+    path: /etc/containerd
+    state: directory
+    mode: '0755'
+
+- name: Configure CRI and systemd cgroups
+  ansible.builtin.template:
+    src: containerd.toml.j2
+    dest: /etc/containerd/config.toml
+    mode: '0644'
+  notify: Restart Kubernetes containerd
+
+- name: Enable containerd and kubelet
+  ansible.builtin.systemd_service:
+    name: "{{ item }}"
+    enabled: true
+    state: started
+  loop: [containerd, kubelet]
+
+
+# kubeadm이 CRI에 연결하기 전에 설정 변경에 따른 재시작을 완료합니다.
+- name: Apply container runtime changes before bootstrap
+  ansible.builtin.meta: flush_handlers

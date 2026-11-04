@@ -1,0 +1,6 @@
+---
+- name: Validate inventory distribution
+  ansible.builtin.import_tasks: cluster.yml
+
+- name: Validate each node before making changes
+  ansible.builtin.import_tasks: node.yml

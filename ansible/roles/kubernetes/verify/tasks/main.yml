@@ -1,0 +1,16 @@
+---
+# CNI/CCM은 별도 레포에서 설치하므로 여기서는 Ready가 아닌 노드 등록 여부까지 확인합니다.
+- name: Read registered nodes
+  ansible.builtin.command: kubectl --kubeconfig /etc/kubernetes/admin.conf get nodes -o json
+  register: kubernetes_registered_nodes
+  changed_when: false
+  until: >-
+    groups['kubernetes'] | difference((kubernetes_registered_nodes.stdout | from_json)['items'] | map(attribute='metadata.name') | list) | length == 0
+  retries: 20
+  delay: 3
+
+- name: Explain remaining platform bootstrap
+  ansible.builtin.debug:
+    msg: >-
+      노드 등록을 확인했습니다. CNI, 필요한 CCM, CSI, MetalLB, Argo CD는 별도 레포에서 구성하세요.
+      CNI 미설치 또는 external cloud provider에서 CCM 미설치 상태이면 NotReady나 미초기화 taint가 남습니다.
