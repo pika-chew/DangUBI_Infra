@@ -1,7 +1,7 @@
 ---
-# 노트북 호스트 그룹은 2-3 단계에서 추가
+# 그룹 하나만 적용할 때는 --limit openstack_nodes 처럼 지정
 - name: Deploy Grafana Alloy
-  hosts: monitoring
+  hosts: monitoring:openstack_nodes
   become: true
 
   roles:

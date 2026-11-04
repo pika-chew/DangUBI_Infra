@@ -8,11 +8,15 @@ alloy_env: private
 
 # 메트릭을 보낼 Prometheus remote write 주소 (inventory/group_vars에서 지정)
 # alloy_remote_write_url: http://<모니터링 VM>/api/v1/write
-# Nginx 인증을 거칠 때만 지정 (비밀번호는 Vault)
+# 백엔드에 인증을 붙일 때만 지정 (비밀번호는 Vault)
 # alloy_remote_write_username:
 # alloy_remote_write_password:
 
 alloy_scrape_interval: 30s
+
+# 네트워크 메트릭에서 뺄 인터페이스. 컨테이너·VM마다 생기는 가상 인터페이스는 수가 많고 수시로 바뀜
+# (docker veth, OpenStack OVS의 tap/qvo/qvb/qbr)
+alloy_netdev_device_exclude: "^(veth.*|tap.*|qvo.*|qvb.*|qbr.*)$"
 
 # Alloy 디버깅 UI. 외부에 노출하지 않도록 localhost에만 바인딩
 alloy_listen_addr: 127.0.0.1:12345
