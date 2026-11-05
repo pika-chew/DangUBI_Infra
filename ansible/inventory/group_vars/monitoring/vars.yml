@@ -1,3 +1,7 @@
 ---
 # 비밀값은 같은 디렉토리의 vault.yml(ansible-vault로 암호화)에 vault_ 접두어로 둔다
 grafana_admin_password: "{{ vault_grafana_admin_password }}"
+
+# 자기 감시 Alloy: 같은 VM이므로 Nginx를 거치지 않고 Prometheus로 직접 전송
+alloy_cluster: observability-vm
+alloy_remote_write_url: http://localhost:9090/api/v1/write
