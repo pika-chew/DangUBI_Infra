@@ -1,0 +1,4 @@
+---
+alloy_cluster: openstack
+# 같은 내부망(10.20.0.0/24)이므로 모니터링 VM Floating IP의 Prometheus로 직접 전송
+alloy_remote_write_url: http://10.20.0.140:9090/api/v1/write

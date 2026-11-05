@@ -96,3 +96,48 @@ ansible-playbook playbooks/monitoring.yml --ask-vault-pass
 - Alertmanager 수신자는 아직 `null`. Slack 웹훅이 준비되면 Vault에 넣고 `alertmanager.yml.j2`에 추가
 - 설정 파일이 바뀌면 해당 컨테이너만 재시작(handler)
 - Grafana 관리자 비밀번호는 Grafana DB가 처음 만들어질 때만 적용됨
+
+### Alloy
+
+모니터링 VM(자기 감시)과 OpenStack 물리 노드에 Alloy를 설치합니다.
+
+| 그룹 | 호스트 | `cluster` 라벨 | 전송 주소 |
+|---|---|---|---|
+| `monitoring` | observability-vm | `observability-vm` | `localhost:9090` |
+| `openstack_nodes` | os-ctl1~3, os-cmp1 | `openstack` | `10.20.0.140:9090` (같은 내부망이라 직접 전송) |
+
+```bash
+# 최초 1회: jenkins-vm의 SSH 키를 물리 노드에 등록
+ssh-copy-id pika1@10.20.0.2   # pika2@10.20.0.3, pika3@10.20.0.4, hong@10.20.0.5도 동일
+
+# 물리 노드는 sudo 비밀번호가 필요하므로 --ask-become-pass
+ansible-playbook playbooks/alloy.yml --limit openstack_nodes --ask-become-pass
+ansible-playbook playbooks/alloy.yml --limit monitoring --ask-vault-pass
+```
+`alloy.yml`: Grafana 공식 APT 저장소로 Alloy를 설치하고 systemd 서비스로 실행
+
+- 수집: 호스트 메트릭(`prometheus.exporter.unix`), Alloy 자신의 상태(`prometheus.exporter.self`)
+- 전송: `alloy_remote_write_url`로 remote write, 모든 메트릭에 `env`·`cluster` 라벨 추가
+- 그룹별 설정(`alloy_cluster`, `alloy_remote_write_url`): `inventory/group_vars/<그룹>/vars.yml`
+- 설정 파일: `/etc/alloy/config.alloy` (배포 전 `alloy fmt`로 문법 검사)
+- 외부 exporter 수집: 호스트별 `alloy_scrape_jobs`(`inventory/hosts.yml`)에 지정한 주소를 scrape. `instance` 라벨은 호스트명
+  - OpenStack 노드는 Kolla-Ansible이 띄운 exporter를 수집 (아래 표)
+- 네트워크 메트릭에서 가상 인터페이스(docker veth, OpenStack tap/qvo/qvb/qbr) 제외: `alloy_netdev_device_exclude`
+- 디버깅 UI: `127.0.0.1:12345` (외부 미노출, `ssh -L 12345:localhost:12345`로 접속)
+
+### Kolla-Ansible exporter (OpenStack 서비스 메트릭)
+
+OpenStack 노드의 `/etc/kolla/globals.yml`에서 Prometheus 서버·Alertmanager·node_exporter 등은 끄고 exporter만 켭니다. exporter는 Kolla 관리망(`10.10.0.x`)에만 열리므로 각 노드의 Alloy가 자기 노드의 exporter를 수집합니다.
+
+| job | 포트 | 노드 | 내용 |
+|---|---|---|---|
+| `mysqld` | 9104 | os-ctl1~3 | MariaDB(Galera) 연결·쿼리·동기화 상태 |
+| `rabbitmq` | 15692 | os-ctl1~3 | RabbitMQ 내장 플러그인. 큐 적체, 연결 수 |
+| `libvirt` | 9177 | os-ctl1~3, os-cmp1 | VM별 CPU·메모리·디스크 |
+| `openstack` | 9198 | os-ctl1 | OpenStack API 상태, VM·자원 현황. 60초 간격 |
+
+```bash
+# OpenStack 노드(os-ctl1, ~/kolla-deploy)에서. Kolla 인벤토리 [monitoring]에 os-ctl1 추가 후
+kolla-ansible deploy -i multinode -t prometheus --ask-become-pass
+kolla-ansible reconfigure -i multinode -t rabbitmq --ask-become-pass   # RabbitMQ 재시작 주의
+```
