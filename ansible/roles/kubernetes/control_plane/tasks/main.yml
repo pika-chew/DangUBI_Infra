@@ -1,0 +1,33 @@
+---
+# 첫 CP에서만 init합니다. 이후 CP는 기존 etcd 그룹에 join해야 합니다.
+- name: Bootstrap first control plane
+  when: not kubernetes_already_joined | bool
+  block:
+    - name: Write kubeadm init configuration
+      ansible.builtin.template:
+        src: init.yml.j2
+        dest: /etc/kubernetes/dangubi-init.yml
+        mode: '0600'
+
+    - name: Validate kubeadm init configuration
+      ansible.builtin.command: kubeadm config validate --config /etc/kubernetes/dangubi-init.yml
+      changed_when: false
+
+    - name: Initialize stacked etcd control plane
+      ansible.builtin.command: kubeadm init --config /etc/kubernetes/dangubi-init.yml
+      no_log: true
+      changed_when: true
+
+    - name: Mark successful bootstrap
+      ansible.builtin.copy:
+        dest: /etc/kubernetes/dangubi-ansible-managed
+        content: "{{ kubernetes_api_endpoint }}\n"
+        mode: '0600'
+
+- name: Verify control plane API readiness
+  ansible.builtin.command: kubectl --kubeconfig /etc/kubernetes/admin.conf get --raw=/readyz
+  register: kubernetes_api_ready
+  until: kubernetes_api_ready.rc == 0
+  retries: 20
+  delay: 3
+  changed_when: false

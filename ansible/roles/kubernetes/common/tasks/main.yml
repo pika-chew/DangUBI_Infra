@@ -1,0 +1,45 @@
+---
+# kubelet은 swap 비활성화를 전제로 하며, 재부팅 뒤에도 유지되도록 fstab을 함께 수정합니다.
+- name: Disable active swap
+  ansible.builtin.command: swapoff -a
+  when: ansible_facts.swaptotal_mb | int > 0
+  changed_when: true
+
+- name: Disable persistent swap entries
+  ansible.builtin.replace:
+    path: /etc/fstab
+    regexp: '^(\s*[^#\s]\S*\s+\S+\s+swap\s+.*)$'
+    replace: '# \1'
+
+- name: Persist kernel modules
+  ansible.builtin.copy:
+    dest: /etc/modules-load.d/kubernetes.conf
+    content: "overlay\nbr_netfilter\n"
+    mode: '0644'
+
+- name: Load required kernel modules
+  ansible.builtin.command: "modprobe {{ item }}"
+  loop: [overlay, br_netfilter]
+  changed_when: false
+
+# Pod 패킷을 노드 밖으로 전달하고 브리지 트래픽에도 방화벽 규칙을 적용할 수 있게 합니다.
+- name: Configure Kubernetes networking sysctls
+  ansible.builtin.copy:
+    dest: /etc/sysctl.d/99-kubernetes.conf
+    content: |
+      net.ipv4.ip_forward = 1
+      net.bridge.bridge-nf-call-iptables = 1
+      net.bridge.bridge-nf-call-ip6tables = 1
+    mode: '0644'
+  register: kubernetes_sysctl_file
+
+- name: Apply sysctls
+  ansible.builtin.command: sysctl -p /etc/sysctl.d/99-kubernetes.conf
+  changed_when: kubernetes_sysctl_file.changed
+
+# init 설정 파일을 저장할 경로를 준비합니다.
+- name: Create kubeadm configuration directory
+  ansible.builtin.file:
+    path: /etc/kubernetes
+    state: directory
+    mode: '0755'

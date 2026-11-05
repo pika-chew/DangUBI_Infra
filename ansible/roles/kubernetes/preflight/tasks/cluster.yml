@@ -1,0 +1,21 @@
+# yaml-language-server: $schema=none
+---
+# 이 검사는 전체 노드에서 변경 작업을 시작하기 전에 한 번만 수행합니다.
+- name: Require the complete cluster without a limit
+  ansible.builtin.assert:
+    that: ansible_play_hosts_all | sort == groups['kubernetes'] | sort
+    fail_msg: 초기 구축은 --limit 없이 전체 클러스터를 대상으로 실행하세요.
+  run_once: true
+- name: Require unique VM addresses and physical host distribution
+  ansible.builtin.assert:
+    that:
+      - groups['kubernetes'] | map('extract', hostvars, 'kubernetes_node_ip') | unique | list | length == 7
+      - groups['kubernetes_control_plane'] | map('extract', hostvars, 'kubernetes_physical_host') | sort == ['ctl1', 'ctl2', 'ctl3']
+      - groups['kubernetes_workers'] | map('extract', hostvars, 'kubernetes_physical_host') | sort == ['cmp1', 'ctl1', 'ctl2', 'ctl3']
+    fail_msg: VM별 사설 IP와 물리 호스트를 입력하고 중복 IP 및 배치를 확인하세요.
+  run_once: true
+- name: Keep API VIP separate from VM addresses
+  ansible.builtin.assert:
+    that: kubernetes_api_vip not in (groups['kubernetes'] | map('extract', hostvars, 'kubernetes_node_ip') | list)
+  when: kubernetes_manage_api_lb | bool
+  run_once: true

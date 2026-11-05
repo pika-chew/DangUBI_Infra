@@ -1,0 +1,113 @@
+---
+# 기존 클러스터와 실패 흔적을 먼저 확인하며, 자동 reset이나 암묵적 업그레이드는 하지 않습니다.
+- name: Require explicit supported configuration
+  ansible.builtin.assert:
+    that:
+      - ansible_facts.distribution == 'Ubuntu'
+      - ansible_facts.distribution_version == '24.04'
+      - ansible_facts.service_mgr == 'systemd'
+      - ansible_facts.processor_vcpus | int >= 2
+      - ansible_facts.memtotal_mb | int >= 1700
+      - inventory_hostname is match('^[a-z0-9]([a-z0-9.-]*[a-z0-9])?$')
+      - inventory_hostname | length <= 63
+      - kubernetes_version is match('^1\.[0-9]+\.[0-9]+$')
+      - kubernetes_version is version('1.31.0', '>=')
+      - kubernetes_package_version.startswith(kubernetes_version + '-')
+      - kubernetes_containerd_package_version | length > 0
+      - kubernetes_external_cloud_provider is boolean
+      - kubernetes_node_ip | default('') | length > 0
+      - kubernetes_physical_host | default('') in ['ctl1', 'ctl2', 'ctl3', 'cmp1']
+      - kubernetes_interface | default('') in ansible_facts.interfaces
+      - kubernetes_nic_mtu | default(0) | int > 0
+      - ansible_facts[kubernetes_interface]['mtu'] | int == kubernetes_nic_mtu | int
+      - ansible_facts[kubernetes_interface]['ipv4']['address'] == kubernetes_node_ip
+      - kubernetes_manage_api_lb | bool or kubernetes_api_endpoint_ready | bool
+    fail_msg: >-
+      Ubuntu 24.04 VM과 버전·IP·CIDR·NIC·MTU·CCM·API LB 설정을 확인하세요.
+      빈 변수로는 설치를 시작하지 않습니다.
+
+- name: Validate IPv4 network ranges on control node
+  ansible.builtin.command:
+    argv:
+      - "{{ ansible_playbook_python }}"
+      - -c
+      - |
+        import ipaddress, json, sys
+        c = json.load(sys.stdin)
+        nets = [ipaddress.IPv4Network(c[k]) for k in ('node', 'pod', 'service')]
+        assert not any(a.overlaps(b) for i, a in enumerate(nets) for b in nets[i+1:]), 'CIDR overlap'
+        assert ipaddress.IPv4Address(c['ip']) in nets[0], 'Node IP outside node CIDR'
+        host, port = c['endpoint'].rsplit(':', 1)
+        assert host and 1 <= int(port) <= 65535, 'Invalid API endpoint'
+        if c['managed_lb']:
+            vip = ipaddress.IPv4Address(c['vip'])
+            assert vip in nets[0] and str(vip) == host, 'VIP must match endpoint and node subnet'
+            assert int(port) == c['lb_port'] and int(port) != 6443, 'LB port conflict'
+            assert 1 <= int(c['vrid']) <= 255, 'Invalid VRRP router ID'
+            assert int(c['prefix']) == nets[0].prefixlen, 'VIP prefix mismatch'
+    stdin: >-
+      {{ {'node': kubernetes_node_cidr, 'pod': kubernetes_pod_cidr,
+          'service': kubernetes_service_cidr, 'ip': kubernetes_node_ip,
+          'endpoint': kubernetes_api_endpoint, 'managed_lb': kubernetes_manage_api_lb,
+          'vip': kubernetes_api_vip, 'lb_port': kubernetes_api_lb_port,
+          'vrid': kubernetes_vrrp_router_id, 'prefix': kubernetes_api_vip_prefix} | to_json }}
+  delegate_to: localhost
+  become: false
+  changed_when: false
+  check_mode: false
+
+- name: Inspect existing Kubernetes state
+  ansible.builtin.stat:
+    path: "{{ item }}"
+  loop:
+    - /etc/kubernetes/kubelet.conf
+    - /etc/kubernetes/admin.conf
+    - /etc/kubernetes/dangubi-ansible-managed
+    - /etc/kubernetes/manifests/kube-apiserver.yaml
+  register: kubernetes_existing_state
+
+- name: Refuse unmanaged or partially bootstrapped nodes
+  ansible.builtin.assert:
+    that:
+      - >-
+        not (kubernetes_existing_state.results[0].stat.exists or
+             kubernetes_existing_state.results[1].stat.exists or
+             kubernetes_existing_state.results[3].stat.exists)
+        or kubernetes_existing_state.results[2].stat.exists
+    fail_msg: 기존 또는 중간 실패 상태의 Kubernetes가 있습니다. 자동 reset하지 않으므로 먼저 수동 점검하세요.
+
+- name: Record whether node is already joined
+  ansible.builtin.set_fact:
+    kubernetes_already_joined: "{{ kubernetes_existing_state.results[0].stat.exists }}"
+
+- name: Read managed cluster endpoint
+  ansible.builtin.slurp:
+    src: /etc/kubernetes/dangubi-ansible-managed
+  register: kubernetes_managed_endpoint
+  when: kubernetes_existing_state.results[2].stat.exists
+
+- name: Refuse endpoint changes or incomplete managed nodes
+  ansible.builtin.assert:
+    that:
+      - kubernetes_managed_endpoint.content | b64decode | trim == kubernetes_api_endpoint
+      - kubernetes_already_joined | bool
+      - inventory_hostname not in groups['kubernetes_control_plane'] or kubernetes_existing_state.results[1].stat.exists
+    fail_msg: 관리 중인 클러스터의 endpoint 변경 또는 불완전한 상태입니다. 먼저 수동 점검하세요.
+  when: kubernetes_existing_state.results[2].stat.exists
+
+- name: Check installed packages before allowing reconfiguration
+  ansible.builtin.package_facts:
+    manager: apt
+
+- name: Refuse implicit package upgrades on joined nodes
+  ansible.builtin.assert:
+    that:
+      - ansible_facts.packages[item.name] | default([]) | length == 1
+      - (ansible_facts.packages[item.name] | first).version == item.version
+    fail_msg: 이미 가입한 노드의 버전 변경은 별도 업그레이드 절차가 필요합니다.
+  loop:
+    - { name: kubeadm, version: "{{ kubernetes_package_version }}" }
+    - { name: kubelet, version: "{{ kubernetes_package_version }}" }
+    - { name: kubectl, version: "{{ kubernetes_package_version }}" }
+    - { name: containerd.io, version: "{{ kubernetes_containerd_package_version }}" }
+  when: kubernetes_already_joined | bool

@@ -1,0 +1,34 @@
+# OpenStack의 VIP 허용 설정과 VRRP 통신은 별도로 준비해야 합니다.
+# CP 간 unicast를 사용하며 HAProxy가 중단된 노드는 VIP 소유권을 내려놓습니다.
+global_defs {
+    router_id {{ inventory_hostname }}
+    script_user root
+    enable_script_security
+}
+
+vrrp_script check_haproxy {
+    script "/usr/bin/systemctl is-active --quiet haproxy"
+    interval 2
+    fall 2
+    rise 2
+}
+
+vrrp_instance KUBERNETES_API {
+    state BACKUP
+    interface {{ kubernetes_interface }}
+    virtual_router_id {{ kubernetes_vrrp_router_id }}
+    priority {{ 150 - groups['kubernetes_control_plane'].index(inventory_hostname) * 10 }}
+    advert_int 1
+    unicast_src_ip {{ kubernetes_node_ip }}
+    unicast_peer {
+{% for node in groups['kubernetes_control_plane'] if node != inventory_hostname %}
+        {{ hostvars[node].kubernetes_node_ip }}
+{% endfor %}
+    }
+    virtual_ipaddress {
+        {{ kubernetes_api_vip }}/{{ kubernetes_api_vip_prefix }} dev {{ kubernetes_interface }}
+    }
+    track_script {
+        check_haproxy
+    }
+}

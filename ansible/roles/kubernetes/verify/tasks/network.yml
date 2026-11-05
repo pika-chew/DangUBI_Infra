@@ -1,0 +1,68 @@
+---
+# 실행마다 독립된 Namespace를 만들고 성공·실패 모두 정리해 사용자 리소스와 충돌하지 않습니다.
+- name: Create temporary network verification namespace
+  ansible.builtin.command:
+    argv: [kubectl, --kubeconfig, /etc/kubernetes/admin.conf, create, -f, '-', -o, json]
+    stdin: >-
+      {{ {'apiVersion': 'v1', 'kind': 'Namespace', 'metadata': {'generateName': 'dangubi-network-check-'}} | to_json }}
+  register: kubernetes_network_namespace_result
+  changed_when: true
+
+- name: Record temporary verification namespace
+  ansible.builtin.set_fact:
+    kubernetes_network_namespace: "{{ (kubernetes_network_namespace_result.stdout | from_json).metadata.name }}"
+
+- name: Run isolated worker networking checks
+  block:
+    - name: Create one HTTP Pod on each worker and a ClusterIP Service
+      ansible.builtin.command:
+        argv: [kubectl, --kubeconfig, /etc/kubernetes/admin.conf, create, -f, '-']
+        stdin: "{{ lookup('ansible.builtin.template', 'network-check.yml.j2') }}"
+      changed_when: true
+
+    - name: Wait for all worker test Pods to become Ready
+      ansible.builtin.command:
+        argv: [kubectl, --kubeconfig, /etc/kubernetes/admin.conf, -n, "{{ kubernetes_network_namespace }}",
+               wait, --for=condition=Ready, pod, -l, app=dangubi-network-check,
+               "--timeout={{ kubernetes_addon_timeout }}s"]
+      changed_when: false
+
+    - name: Read worker test Pod addresses
+      ansible.builtin.command:
+        argv: [kubectl, --kubeconfig, /etc/kubernetes/admin.conf, -n, "{{ kubernetes_network_namespace }}",
+               get, pods, -l, app=dangubi-network-check, -o, json]
+      register: kubernetes_network_pods
+      changed_when: false
+
+    - name: Require exactly one running test Pod on each worker
+      ansible.builtin.assert:
+        that:
+          - (kubernetes_network_pods.stdout | from_json)['items'] | length == groups['kubernetes_workers'] | length
+          - (kubernetes_network_pods.stdout | from_json)['items'] | map(attribute='spec.nodeName') | list | sort == groups['kubernetes_workers'] | sort
+
+    # 모든 Worker에서 다른 Worker의 Pod IP, ClusterIP Service와 CoreDNS를 실제로 사용합니다.
+    - name: Check DNS Service routing and all worker Pod IPs
+      ansible.builtin.command:
+        argv: >-
+          {{ ['kubectl', '--kubeconfig', '/etc/kubernetes/admin.conf', '-n', kubernetes_network_namespace,
+              'exec', item.metadata.name, '--', 'sh', '-ec',
+              'nslookup kubernetes.default.svc.cluster.local; '
+              + 'nslookup network-check.' + kubernetes_network_namespace + '.svc.cluster.local; '
+              + 'wget -q -T 10 -O - http://network-check:8080/; '
+              + 'for ip in "$@"; do wget -q -T 10 -O - "http://$ip:8080/"; done',
+              'network-check']
+              + ((kubernetes_network_pods.stdout | from_json)['items'] | map(attribute='status.podIP') | list) }}
+      loop: "{{ (kubernetes_network_pods.stdout | from_json)['items'] }}"
+      loop_control:
+        label: "{{ item.spec.nodeName }}"
+      register: kubernetes_network_probe
+      until: kubernetes_network_probe.rc == 0
+      retries: 6
+      delay: 5
+      changed_when: false
+  always:
+    - name: Remove temporary network verification resources
+      ansible.builtin.command:
+        argv: [kubectl, --kubeconfig, /etc/kubernetes/admin.conf, delete, namespace,
+               "{{ kubernetes_network_namespace }}", --wait=true, --timeout=120s]
+      changed_when: true

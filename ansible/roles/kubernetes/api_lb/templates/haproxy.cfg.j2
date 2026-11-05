@@ -1,0 +1,23 @@
+global
+    log /dev/log local0
+    user haproxy
+    group haproxy
+    daemon
+
+defaults
+    log global
+    mode tcp
+    timeout connect 5s
+    timeout client 1m
+    timeout server 1m
+
+frontend kubernetes_api
+    bind *:{{ kubernetes_api_lb_port }}
+    default_backend kubernetes_control_planes
+
+backend kubernetes_control_planes
+    balance roundrobin
+    option tcp-check
+{% for node in groups['kubernetes_control_plane'] %}
+    server {{ node }} {{ hostvars[node].kubernetes_node_ip }}:6443 check inter 2s fall 3 rise 2
+{% endfor %}

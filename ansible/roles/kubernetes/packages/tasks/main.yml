@@ -1,0 +1,67 @@
+---
+# OS 저장소의 최신 버전을 자동 선택하지 않고, 지정한 정확한 버전으로 설치 후 hold합니다.
+- name: Install repository prerequisites
+  ansible.builtin.apt:
+    name: [ca-certificates, curl, gpg, python3-debian]
+    state: present
+    update_cache: true
+
+- name: Create repository keyring directory
+  ansible.builtin.file:
+    path: /etc/apt/keyrings
+    state: directory
+    mode: '0755'
+
+- name: Install Docker repository key for standalone containerd
+  ansible.builtin.get_url:
+    url: https://download.docker.com/linux/ubuntu/gpg
+    dest: /etc/apt/keyrings/kubernetes-containerd.asc
+    mode: '0644'
+
+- name: Configure containerd repository
+  ansible.builtin.deb822_repository:
+    name: kubernetes-containerd
+    types: [deb]
+    uris: https://download.docker.com/linux/ubuntu
+    suites: "{{ ansible_facts.distribution_release }}"
+    components: [stable]
+    signed_by: /etc/apt/keyrings/kubernetes-containerd.asc
+    state: present
+
+- name: Download Kubernetes repository key
+  ansible.builtin.get_url:
+    url: "https://pkgs.k8s.io/core:/stable:/v{{ kubernetes_version.split('.')[:2] | join('.') }}/deb/Release.key"
+    dest: /etc/apt/keyrings/kubernetes-release.asc
+    mode: '0644'
+  register: kubernetes_repo_key
+
+- name: Convert Kubernetes repository key
+  ansible.builtin.command:
+    argv: [gpg, --batch, --yes, --dearmor, -o, /etc/apt/keyrings/kubernetes.gpg, /etc/apt/keyrings/kubernetes-release.asc]
+    creates: "{{ omit if kubernetes_repo_key.changed else '/etc/apt/keyrings/kubernetes.gpg' }}"
+
+- name: Configure Kubernetes repository
+  ansible.builtin.deb822_repository:
+    name: kubernetes
+    types: [deb]
+    uris: "https://pkgs.k8s.io/core:/stable:/v{{ kubernetes_version.split('.')[:2] | join('.') }}/deb/"
+    suites: [/]
+    signed_by: /etc/apt/keyrings/kubernetes.gpg
+    state: present
+
+- name: Install exact runtime and Kubernetes versions
+  ansible.builtin.apt:
+    name:
+      - "containerd.io={{ kubernetes_containerd_package_version }}"
+      - "kubeadm={{ kubernetes_package_version }}"
+      - "kubelet={{ kubernetes_package_version }}"
+      - "kubectl={{ kubernetes_package_version }}"
+    state: present
+    update_cache: true
+
+- name: Hold runtime and Kubernetes packages
+  ansible.builtin.dpkg_selections:
+    name: "{{ item }}"
+    selection: hold
+  loop: [containerd.io, kubeadm, kubelet, kubectl]
+

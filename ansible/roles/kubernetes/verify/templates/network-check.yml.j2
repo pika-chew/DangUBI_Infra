@@ -1,0 +1,62 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: network-check
+  namespace: {{ kubernetes_network_namespace }}
+spec:
+  selector:
+    app: dangubi-network-check
+  ports:
+    - port: 8080
+      targetPort: 8080
+{% for worker in groups['kubernetes_workers'] %}
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: network-check-{{ loop.index }}
+  namespace: {{ kubernetes_network_namespace }}
+  labels:
+    app: dangubi-network-check
+spec:
+  # nodeName 대신 affinity를 사용해 스케줄러의 배치 검증을 거칩니다.
+  affinity:
+    nodeAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        nodeSelectorTerms:
+          - matchFields:
+              - key: metadata.name
+                operator: In
+                values: [{{ worker | to_json }}]
+  automountServiceAccountToken: false
+  restartPolicy: Never
+  activeDeadlineSeconds: {{ kubernetes_addon_timeout | int + 300 }}
+  terminationGracePeriodSeconds: 0
+  securityContext:
+    runAsUser: 1000
+    runAsNonRoot: true
+    seccompProfile:
+      type: RuntimeDefault
+  containers:
+    - name: http
+      image: {{ kubernetes_network_check_image }}
+      command: [sh, -ec]
+      args:
+        - mkdir -p /tmp/www; hostname > /tmp/www/index.html; exec httpd -f -p 8080 -h /tmp/www
+      readinessProbe:
+        httpGet:
+          path: /
+          port: 8080
+        periodSeconds: 2
+      securityContext:
+        allowPrivilegeEscalation: false
+        capabilities:
+          drop: [ALL]
+      resources:
+        requests:
+          cpu: 5m
+          memory: 8Mi
+        limits:
+          cpu: 100m
+          memory: 32Mi
+{% endfor %}
