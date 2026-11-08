@@ -1,4 +1,4 @@
-# 호출 권한만 준비합니다. IoT Rule의 실제 전송 대상은 전환 단계에서 변경합니다.
+# Rule 비활성 상태에도 기존 서비스 Lambda의 호출 권한을 준비합니다.
 resource "aws_lambda_permission" "iot" {
   count = var.iot_rule_arn == null ? 0 : 1
 

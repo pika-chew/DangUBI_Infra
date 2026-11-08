@@ -20,7 +20,7 @@ resource "aws_lambda_function" "preprocess" {
   lifecycle {
     precondition {
       condition     = var.image_uri != null
-      error_message = "ECR을 먼저 생성하고 Java 이미지를 업로드한 뒤 processing_image_uri를 설정하세요. scripts/publish-processing-image.sh 안내를 확인하세요."
+      error_message = "processing-image.auto.tfvars.json의 processing_image_uri에 ECR 이미지 digest URI를 설정하세요."
     }
     precondition {
       condition     = var.image_uri == null ? true : startswith(var.image_uri, "${aws_ecr_repository.preprocess.repository_url}@sha256:")
