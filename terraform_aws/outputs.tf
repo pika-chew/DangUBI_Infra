@@ -113,6 +113,36 @@ output "processing_ci_processed_bucket_name" {
   value       = module.processing.ci_processed_bucket_name
 }
 
+output "processing_firehose_stream_name" {
+  description = "서비스 Lambda용 Firehose 이름"
+  value       = module.processing.firehose_stream_name
+}
+
+output "processing_firehose_stream_arn" {
+  description = "서비스 Firehose 쓰기 권한 범위를 제한할 ARN"
+  value       = module.processing.firehose_stream_arn
+}
+
+output "processing_firehose_log_group" {
+  description = "서비스 Firehose의 S3 전달 오류 로그 그룹"
+  value       = module.processing.firehose_log_group_name
+}
+
+output "processing_ci_firehose_stream_name" {
+  description = "CI Lambda용 테스트 Firehose 이름"
+  value       = module.processing.ci_firehose_stream_name
+}
+
+output "processing_ci_firehose_stream_arn" {
+  description = "CI Firehose 쓰기 권한 범위를 제한할 ARN"
+  value       = module.processing.ci_firehose_stream_arn
+}
+
+output "processing_ci_firehose_log_group" {
+  description = "CI Firehose의 S3 전달 오류 로그 그룹"
+  value       = module.processing.ci_firehose_log_group_name
+}
+
 output "iot_device_connections" {
   description = "시뮬레이터에서 사용할 차량별 MQTT 접속 정보"
   value       = module.ingestion.iot_device_connections

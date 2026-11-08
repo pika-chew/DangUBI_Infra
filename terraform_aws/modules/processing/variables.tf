@@ -53,3 +53,25 @@ variable "consumer_enabled" {
   description = "Kinesis 이벤트 소스 매핑 활성화 여부"
   type        = bool
 }
+
+variable "firehose_buffering_size_mib" {
+  description = "서비스·CI Firehose의 S3 전달 버퍼 크기 힌트(MiB)"
+  type        = number
+  default     = 5
+
+  validation {
+    condition     = var.firehose_buffering_size_mib >= 1 && var.firehose_buffering_size_mib <= 128 && floor(var.firehose_buffering_size_mib) == var.firehose_buffering_size_mib
+    error_message = "Firehose 버퍼 크기는 1~128 MiB 사이의 정수여야 합니다."
+  }
+}
+
+variable "firehose_buffering_interval_seconds" {
+  description = "서비스·CI Firehose의 S3 전달 버퍼 시간 힌트(초). 종단 간 지연 상한이 아님"
+  type        = number
+  default     = 60
+
+  validation {
+    condition     = var.firehose_buffering_interval_seconds >= 0 && var.firehose_buffering_interval_seconds <= 900 && floor(var.firehose_buffering_interval_seconds) == var.firehose_buffering_interval_seconds
+    error_message = "Firehose 버퍼 시간은 0~900초 사이의 정수여야 합니다."
+  }
+}

@@ -92,3 +92,33 @@ output "ci_processed_bucket_name" {
   description = "CI 결과 확인용 테스트 S3 버킷 이름"
   value       = aws_s3_bucket.processed_ci.id
 }
+
+output "firehose_stream_name" {
+  description = "서비스 Lambda가 가공 결과를 전달할 Firehose 이름"
+  value       = aws_kinesis_firehose_delivery_stream.processed["service"].name
+}
+
+output "firehose_stream_arn" {
+  description = "서비스 Firehose 쓰기 권한 범위를 제한할 ARN"
+  value       = aws_kinesis_firehose_delivery_stream.processed["service"].arn
+}
+
+output "firehose_log_group_name" {
+  description = "서비스 Firehose의 S3 전달 오류 로그 그룹"
+  value       = aws_cloudwatch_log_group.firehose["service"].name
+}
+
+output "ci_firehose_stream_name" {
+  description = "CI Lambda가 가공 결과를 전달할 테스트 Firehose 이름"
+  value       = aws_kinesis_firehose_delivery_stream.processed["ci"].name
+}
+
+output "ci_firehose_stream_arn" {
+  description = "CI Firehose 쓰기 권한 범위를 제한할 ARN"
+  value       = aws_kinesis_firehose_delivery_stream.processed["ci"].arn
+}
+
+output "ci_firehose_log_group_name" {
+  description = "CI Firehose의 S3 전달 오류 로그 그룹"
+  value       = aws_cloudwatch_log_group.firehose["ci"].name
+}

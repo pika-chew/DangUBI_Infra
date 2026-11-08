@@ -51,6 +51,9 @@ module "processing" {
   log_retention_days         = var.cloudwatch_log_retention_days
   batch_size                 = var.processing_batch_size
   consumer_enabled           = var.processing_consumer_enabled
+
+  firehose_buffering_size_mib         = var.firehose_buffering_size_mib
+  firehose_buffering_interval_seconds = var.firehose_buffering_interval_seconds
 }
 
 module "monitoring" {
