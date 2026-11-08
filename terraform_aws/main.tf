@@ -88,4 +88,8 @@ module "monitoring" {
   processing_log_group_name   = module.processing.function_log_group_name
   iot_rule_name               = module.ingestion.iot_rule_name
   iot_error_log_group_name    = module.ingestion.iot_error_log_group_name
+
+  firehose_stream_name                 = module.delivery.firehose_stream_name
+  firehose_log_group_name              = module.delivery.firehose_log_group_name
+  firehose_freshness_threshold_seconds = max(300, var.firehose_buffering_interval_seconds * 2)
 }

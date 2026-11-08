@@ -7,6 +7,56 @@ locals {
   }
 
   alarms = {
+    firehose_write_throttled = {
+      description = "Firehose 쓰기 제한 발생. Lambda 재시도와 스트림 수신 처리량을 확인하세요."
+      namespace   = "AWS/Firehose"
+      metric_name = "ThrottledRecords"
+      statistic   = "Sum"
+      period      = 60
+      evaluations = 1
+      threshold   = 0
+      dimensions  = { DeliveryStreamName = var.firehose_stream_name }
+    }
+    firehose_delivery_errors = {
+      description = "Firehose 전달 오류 로그가 기록됐습니다. S3 접근 권한과 전달 로그를 확인하세요."
+      namespace   = "UBI/${var.name_prefix}"
+      metric_name = "FirehoseDeliveryErrorLogs"
+      statistic   = "Sum"
+      period      = 60
+      evaluations = 1
+      threshold   = 0
+      dimensions  = {}
+    }
+    firehose_delivery_delayed = {
+      description = "Firehose의 S3 미전달 데이터가 지연되고 있습니다. 전달 로그와 S3 상태를 확인하세요."
+      namespace   = "AWS/Firehose"
+      metric_name = "DeliveryToS3.DataFreshness"
+      statistic   = "Maximum"
+      period      = 60
+      evaluations = 3
+      threshold   = var.firehose_freshness_threshold_seconds
+      dimensions  = { DeliveryStreamName = var.firehose_stream_name }
+    }
+    processing_async_old = {
+      description = "Lambda 비동기 이벤트 대기가 5분을 넘었습니다. 함수 오류와 호출 제한을 확인하세요."
+      namespace   = "AWS/Lambda"
+      metric_name = "AsyncEventAge"
+      statistic   = "Maximum"
+      period      = 60
+      evaluations = 3
+      threshold   = 300000 # 밀리초, 5분
+      dimensions  = { FunctionName = var.processing_function_name }
+    }
+    processing_async_dropped = {
+      description = "Lambda 비동기 이벤트가 만료되거나 재시도를 소진했습니다. 실패 보관 S3를 확인하세요."
+      namespace   = "AWS/Lambda"
+      metric_name = "AsyncEventsDropped"
+      statistic   = "Sum"
+      period      = 60
+      evaluations = 1
+      threshold   = 0
+      dimensions  = { FunctionName = var.processing_function_name }
+    }
     kinesis_write_throttled = {
       description = "Kinesis 쓰기 제한 발생. 생산자의 재시도 및 스트림 처리량을 확인하세요."
       namespace   = "AWS/Kinesis"
@@ -98,7 +148,7 @@ locals {
       dimensions  = { FunctionName = var.processing_function_name }
     }
     processing_record_failures = {
-      description = "JSON 검증, 가공 S3 저장 또는 SQS 전송 실패. 재시도 및 실패 보관 이벤트를 확인하세요."
+      description = "전처리 로그에 레코드 실패가 기록됐습니다. 함수 로그와 실패 보관 이벤트를 확인하세요."
       namespace   = "UBI/${var.name_prefix}"
       metric_name = "ProcessingFailedRecords"
       statistic   = "Sum"
@@ -128,7 +178,7 @@ locals {
       dimensions  = { RuleName = var.iot_rule_name }
     }
     iot_rule_errors = {
-      description = "IoT → Kinesis 전달 오류가 기록됐습니다. IoT 규칙 오류 로그를 확인하세요."
+      description = "IoT → Lambda 호출 전달 오류가 기록됐습니다. IoT 규칙 오류 로그를 확인하세요."
       namespace   = "UBI/${var.name_prefix}"
       metric_name = "IotRuleErrors"
       statistic   = "Sum"

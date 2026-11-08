@@ -1,6 +1,6 @@
 # AWS Firehose 파이프라인 전환 설계
 
-상태: 5단계 S3→SQS 연결 설정을 `dadabb3`로 커밋한 뒤, IoT Rule을 기존 서비스 Lambda 직접 호출로 고정했다. Kinesis 선택·복귀 분기는 두지 않으며 Kinesis 리소스 자체는 후속 정리 단계에서 제거한다. Lambda 소스 수정·이미지 준비는 사용자 측에서 별도로 진행한다. AWS에는 적용하지 않았다.
+상태: IoT Rule의 서비스 Lambda 직접 호출을 `15f5415`로 커밋했다. 현재 새 경로의 모니터링 코드를 준비했다. Kinesis 선택·복귀 분기는 두지 않으며 Kinesis 리소스 자체는 후속 정리 단계에서 제거한다. Lambda 소스 수정·이미지 준비는 사용자 측에서 별도로 진행한다. AWS에는 적용하지 않았다.
 
 ## 1. 목표와 작업 범위
 
@@ -42,7 +42,7 @@ AWS 이름과 설정은 유지하고, 저장·전달 리소스의 Terraform 주�
 - `processing`: 서비스·CI Lambda, ECR, Lambda 실행 역할·로그·호출 권한·비동기 설정. 기존 Kinesis 이벤트 소스 매핑도 제거 단계 전까지 유지한다.
 - `delivery`: Firehose, 가공 S3, SQS, Firehose 실행 역할·로그, S3 알림과 SQS 수신 정책. S3 알림은 환경별 플래그를 켤 때만 생성한다.
 - `archive`: 기존 raw 버킷·과거 원본·실패 기록과 전환 완료 전의 Channel을 유지한다. Channel 정의 파일은 새 delivery 모듈과 구분하도록 `kinesis_channel.tf`로 이름을 정리한다. 파일명 변경으로 리소스 주소는 바뀌지 않는다.
-- `monitoring`: 내부 파일을 변경하지 않는다. 루트에서 수집 큐 정보를 받는 참조만 delivery 출력으로 연결한다.
+- `monitoring`: 폴더 구조를 유지한다. delivery의 서비스 Firehose·로그와 processing의 서비스 Lambda를 받아 새 경로의 지표·알람을 관리한다. 기존 Kinesis 지표·알람은 해당 리소스 제거 단계까지 유지한다.
 
 `delivery.lambda_destinations`는 서비스·CI별 버킷 이름·ARN, 큐 URL·ARN·메시지 크기, Firehose 이름·ARN을 묶어 `processing.delivery_destinations`로 전달한다. 기존 Lambda 환경 변수의 실제 값은 유지하며, 버킷 보호 설정의 생성 순서도 delivery 출력의 의존성으로 이어간다. 외부 스크립트·Jenkins 호환성을 위해 루트 output 이름은 바꾸지 않는다.
 
@@ -185,6 +185,20 @@ s3_queue_notifications_enabled = true
 
 Kinesis Stream·Channel·기존 Lambda 이벤트 소스 매핑과 전용 권한·변수의 제거는 후속 정리 단계로 분리한다. 이번 Rule 수정에 해당 리소스 삭제를 섞지 않는다. 최종 구성에 Kinesis 선택지를 남기는 것은 아니다.
 
+### 새 경로의 모니터링
+
+기존 monitoring 모듈과 대시보드를 갱신한다. 서비스 Firehose를 대상으로 새 알람 3개, 서비스 Lambda를 대상으로 비동기 알람 2개를 추가한다. CI 전용 로그는 유지하지만 이번 운영 알람에 CI를 합치지 않는다.
+
+- Firehose `ThrottledRecords`: 60초 합계가 0을 초과하면 경보.
+- Firehose 전달 오류 로그: 전용 로그 그룹의 기록을 커스텀 지표 `FirehoseDeliveryErrorLogs`로 집계하고, 60초 합계가 0을 초과하면 경보. 실패한 데이터 레코드 수가 아니라 기록된 오류 로그 수다. 대량 실패 때 로그가 샘플링될 수 있어 모든 실패를 집계한다고 해석하지 않는다. [Firehose 오류 로그](https://docs.aws.amazon.com/firehose/latest/dev/monitoring-with-cloudwatch-logs.html)
+- Firehose `DeliveryToS3.DataFreshness`: 60초 최댓값이 `max(300, firehose_buffering_interval_seconds × 2)`초를 3구간 연속 초과하면 경보. 기본 버퍼에서는 임계값이 300초(5분)다. S3에 아직 전달하지 못한 데이터의 지연을 관측하며 소비자 처리 완료 시간은 아니다. [Firehose 지표](https://docs.aws.amazon.com/firehose/latest/dev/monitoring-with-cloudwatch-metrics.html)
+- Lambda `AsyncEventAge`: 60초 최댓값이 300,000밀리초(5분)를 3구간 연속 초과하면 경보.
+- Lambda `AsyncEventsDropped`: 60초 합계가 0을 초과하면 경보. 만료·재시도 소진 이벤트를 확인하는 신호이며 실패 보관 S3에 남았는지도 확인해야 한다. 기존 `DestinationDeliveryFailures` 알람도 유지한다. [Lambda 비동기 지표](https://docs.aws.amazon.com/lambda/latest/dg/monitoring-metrics-types.html)
+
+기존 13개 알람의 이름·임계값·평가 설정과 지표를 유지한다. 누락된 지표는 기존과 같이 `notBreaching`으로 처리하므로 데이터가 없다는 사실만으로 정상 전달을 증명하지 않는다. `cloudwatch_alarm_action_arns` 기본값은 빈 목록이므로 기본 설정만으로 외부 알림을 발송하지 않는다.
+
+대시보드에 Firehose 수신·S3 전달·쓰기 제한·지연·오류 로그와 Lambda 비동기 지표 위젯 6개를 추가해 총 19개를 둔다. 기존 Kinesis·Channel 위젯은 아래로 이동하고 리소스 제거 단계에서 함께 정리한다. 기존 `processing_summary` 로그 필터는 외부 이미지가 해당 로그 형식을 유지해야 동작하며, 함수 오류·비동기 기본 지표도 함께 관측한다.
+
 ## 7. 단계별 변경과 커밋 경계
 
 1. 이 설계 문서만 추가한다. 미확정 사항은 사용자와 외부 코드 담당자가 결정한다.
@@ -192,7 +206,7 @@ Kinesis Stream·Channel·기존 Lambda 이벤트 소스 매핑과 전용 권한�
 3. 사용자 측에서 별도 Lambda 저장소의 소스 수정·이미지 준비를 진행한다. 이 세션에서는 해당 작업 대신 다음 인프라 준비 단계로 진행한다. 새 입력·출력을 지원하는 이미지가 준비되기 전 실제 Rule 전환은 하지 않는다.
 4. 기존 Lambda의 권한·환경 변수·이미지 연결, CI 연동, IoT 호출 권한과 비동기 실패 설정을 준비한다. 실제 Rule 대상은 아직 바꾸지 않는다.
 5. S3 알림·SQS 정책을 준비한다. 서비스·CI 알림 기본값은 false로 두고, 서비스 소비자와 별도 Lambda 이미지 준비 이후에 각 환경을 활성화한다. 소비자 애플리케이션 코드는 이 세션에서 수정하지 않는다.
-6. IoT Rule을 기존 서비스 Lambda 직접 호출로 고정한다. 이미지·소비자·S3 알림을 준비한 뒤 실제 활성화한다. 새 경로의 로그·알람 갱신과 기존 적체의 처리 완료 확인은 후속 작업이다.
+6. IoT Rule을 기존 서비스 Lambda 직접 호출로 고정한다. 이미지·소비자·S3 알림을 준비한 뒤 실제 활성화한다. 새 경로의 로그·알람 코드도 준비한다. 실제 활성화와 기존 적체의 처리 완료 확인은 별도다.
 7. 기존 Kinesis·Channel·이벤트 소스 매핑과 불필요한 설정만 제거한다. 버킷·과거 데이터·서비스 및 CI Lambda는 유지한다.
 
 이미지 변경, 환경 변수 준비, Rule 전환은 Terraform의 한 번의 apply 안에서 순서가 보장된다고 가정하지 않는다. 전환 단계는 필요하면 여러 번의 apply로 나누며, 복구 시에는 호환 이미지·실패 보관 이벤트·처리 중인 데이터와 소비자 상태를 함께 고려한다.
@@ -203,7 +217,7 @@ Kinesis Stream·Channel·기존 Lambda 이벤트 소스 매핑과 전용 권한�
 
 ## 8. 필요한 확인과 이번 단계의 한계
 
-1단계에서는 문서의 리소스 주소와 설정을 로컬 코드 및 AWS 공식 문서와 대조했다. 2단계와 4단계에서는 추가·수정한 Terraform의 `fmt -check`와 `validate`만 수행했다. 모듈 구조 정리에서는 기존 processing mock 테스트 3개를 새 입력 구조로 조정해 실행하고, 이동한 리소스 정의와 `moved` 대응 관계도 대조했다. 5단계에서는 포맷·구성 검증 및 delivery 알림 mock 테스트 3개로 기본 비활성화·CI 단독 활성화·양쪽 활성화와 정상 prefix의 선택적 알림을 확인했다. IoT Rule 작업에서는 포맷·구성 검증, Lambda 직접 호출 mock 테스트 4개와 실제 루트 variables.tf의 전환 조건 3가지를 AWS provider·backend가 없는 임시 디렉토리에서 확인했다. 실제 AWS를 사용하는 테스트, Docker 빌드, AWS 대상 plan·apply, 실제 메시지 송신은 수행하지 않았다.
+1단계에서는 문서의 리소스 주소와 설정을 로컬 코드 및 AWS 공식 문서와 대조했다. 2단계와 4단계에서는 추가·수정한 Terraform의 `fmt -check`와 `validate`만 수행했다. 모듈 구조 정리에서는 기존 processing mock 테스트 3개를 새 입력 구조로 조정해 실행하고, 이동한 리소스 정의와 `moved` 대응 관계도 대조했다. 5단계에서는 포맷·구성 검증 및 delivery 알림 mock 테스트 3개로 기본 비활성화·CI 단독 활성화·양쪽 활성화와 정상 prefix의 선택적 알림을 확인했다. IoT Rule 작업에서는 포맷·구성 검증, Lambda 직접 호출 mock 테스트 4개와 실제 루트 variables.tf의 전환 조건 3가지를 AWS provider·backend가 없는 임시 디렉토리에서 확인했다. 모니터링 갱신에서는 포맷·구성 검증과 기존 알람·대시보드 지표 보존 및 위젯 좌표 중복 여부를 확인했다. 이 단계에서 새 mock 테스트는 추가·실행하지 않았다. 실제 AWS를 사용하는 테스트, Docker 빌드, AWS 대상 plan·apply, 실제 메시지 송신, 지표 발생·경보 동작·대시보드 렌더링은 확인하지 않았다.
 
 설치된 provider 스키마 조회와 모듈 초기화 중 원격 backend 인증 세션 만료를 확인했다. 일반 초기화는 인증 단계에서 완료하지 못했지만 로컬 모듈 등록 이후 구성 검증과 mock 테스트는 통과했다. 실제 AWS 계획은 확인하지 않았으며, apply 전 AWS에 다시 로그인하고 최신 plan으로 변경 범위를 확인해야 한다. 로컬 문법·참조 검증의 통과를 AWS 전달 성공이나 삭제·교체 없음의 증거로 삼지 않는다.
 
