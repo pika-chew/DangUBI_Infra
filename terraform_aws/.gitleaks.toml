@@ -1,0 +1,8 @@
+[extend]
+useDefault = true
+
+[allowlist]
+description = "terraform init 결과물(provider 바이너리 등)은 검사하지 않습니다."
+paths = [
+  '''(^|/)\.terraform/''',
+]
