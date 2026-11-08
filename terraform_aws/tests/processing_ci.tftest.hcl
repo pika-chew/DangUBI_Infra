@@ -18,19 +18,7 @@ mock_provider "aws" {
     }
   }
 
-  mock_resource "aws_sqs_queue" {
-    defaults = {
-      arn = "arn:aws:sqs:ap-northeast-2:123456789012:ubi-dev-ingestion"
-      url = "https://sqs.ap-northeast-2.amazonaws.com/123456789012/ubi-dev-ingestion"
-    }
-  }
 
-  mock_resource "aws_s3_bucket" {
-    defaults = {
-      id  = "ubi-dev-processed-123456789012-ap-northeast-2"
-      arn = "arn:aws:s3:::ubi-dev-processed-123456789012-ap-northeast-2"
-    }
-  }
 }
 
 mock_provider "time" {}
@@ -45,32 +33,20 @@ override_resource {
 variables {
   image_uri          = "123456789012.dkr.ecr.ap-northeast-2.amazonaws.com/ubi-dev-preprocess@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
   name_prefix        = "ubi-dev"
-  stream_arn         = "arn:aws:kinesis:ap-northeast-2:123456789012:stream/ubi-dev-telemetry"
-  stream_kms_key_arn = "arn:aws:kms:ap-northeast-2:123456789012:key/11111111-1111-1111-1111-111111111111"
   failure_bucket_arn = "arn:aws:s3:::ubi-dev-failures"
   aws_region         = "ap-northeast-2"
   aws_account_id     = "123456789012"
   log_retention_days = 7
-  batch_size         = 100
-  consumer_enabled   = true
   delivery_destinations = {
     service = {
-      bucket_name       = "ubi-dev-processed-123456789012-ap-northeast-2"
-      bucket_arn        = "arn:aws:s3:::ubi-dev-processed-123456789012-ap-northeast-2"
-      queue_url         = "https://sqs.ap-northeast-2.amazonaws.com/123456789012/ubi-dev-ingestion"
-      queue_arn         = "arn:aws:sqs:ap-northeast-2:123456789012:ubi-dev-ingestion"
-      max_message_bytes = 262144
-      firehose_name     = "ubi-dev-processed-firehose"
-      firehose_arn      = "arn:aws:firehose:ap-northeast-2:123456789012:deliverystream/ubi-dev-processed-firehose"
+      bucket_arn    = "arn:aws:s3:::ubi-dev-processed-123456789012-ap-northeast-2"
+      firehose_name = "ubi-dev-processed-firehose"
+      firehose_arn  = "arn:aws:firehose:ap-northeast-2:123456789012:deliverystream/ubi-dev-processed-firehose"
     }
     ci = {
-      bucket_name       = "ubi-dev-processed-ci-123456789012-ap-northeast-2"
-      bucket_arn        = "arn:aws:s3:::ubi-dev-processed-ci-123456789012-ap-northeast-2"
-      queue_url         = "https://sqs.ap-northeast-2.amazonaws.com/123456789012/ubi-dev-ingestion-ci"
-      queue_arn         = "arn:aws:sqs:ap-northeast-2:123456789012:ubi-dev-ingestion-ci"
-      max_message_bytes = 262144
-      firehose_name     = "ubi-dev-processed-ci-firehose"
-      firehose_arn      = "arn:aws:firehose:ap-northeast-2:123456789012:deliverystream/ubi-dev-processed-ci-firehose"
+      bucket_arn    = "arn:aws:s3:::ubi-dev-processed-ci-123456789012-ap-northeast-2"
+      firehose_name = "ubi-dev-processed-ci-firehose"
+      firehose_arn  = "arn:aws:firehose:ap-northeast-2:123456789012:deliverystream/ubi-dev-processed-ci-firehose"
     }
   }
 }
@@ -89,15 +65,9 @@ run "bootstrap_and_isolate_ci" {
 
   assert {
     condition = (
-      aws_lambda_function.preprocess_ci.environment[0].variables.QUEUE_URL != aws_lambda_function.preprocess.environment[0].variables.QUEUE_URL &&
-      aws_lambda_function.preprocess_ci.environment[0].variables.PROCESSED_BUCKET != aws_lambda_function.preprocess.environment[0].variables.PROCESSED_BUCKET
+      aws_lambda_function.preprocess_ci.environment[0].variables.FIREHOSE_STREAM_NAME != aws_lambda_function.preprocess.environment[0].variables.FIREHOSE_STREAM_NAME
     )
-    error_message = "CI must write to separate SQS and S3 resources."
-  }
-
-  assert {
-    condition     = aws_lambda_event_source_mapping.telemetry.function_name == aws_lambda_function.preprocess.arn
-    error_message = "The source stream must continue invoking the service function."
+    error_message = "CI must deliver records to its own Firehose stream."
   }
 
   assert {
@@ -108,18 +78,16 @@ run "bootstrap_and_isolate_ci" {
   assert {
     condition = toset(flatten([
       for statement in jsondecode(aws_iam_role_policy.preprocess.policy).Statement : statement.Resource
-      if contains(["SendToIngestionQueue", "ArchiveProcessedMessages", "WriteFunctionLogs"], statement.Sid)
+      if contains(["WriteProcessedRecordsToFirehose", "WriteFunctionLogs"], statement.Sid)
       ])) == toset([
-      var.delivery_destinations["service"].queue_arn,
-      var.delivery_destinations["ci"].queue_arn,
-      "${var.delivery_destinations["service"].bucket_arn}/processed/*",
-      "${var.delivery_destinations["ci"].bucket_arn}/processed/*",
+      var.delivery_destinations["service"].firehose_arn,
+      var.delivery_destinations["ci"].firehose_arn,
       aws_cloudwatch_log_group.preprocess.arn,
       "${aws_cloudwatch_log_group.preprocess.arn}:*",
       aws_cloudwatch_log_group.preprocess_ci.arn,
       "${aws_cloudwatch_log_group.preprocess_ci.arn}:*"
     ])
-    error_message = "The shared role must retain service access and also allow the test queue, bucket, and logs."
+    error_message = "The shared role must allow both Firehose streams and function logs."
   }
 
   assert {

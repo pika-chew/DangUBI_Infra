@@ -20,27 +20,6 @@ resource "aws_iam_role_policy" "preprocess" {
     Version = "2012-10-17"
     Statement = [
       {
-        Sid    = "ReadSourceStream"
-        Effect = "Allow"
-        Action = [
-          "kinesis:DescribeStream", "kinesis:DescribeStreamSummary",
-          "kinesis:GetRecords", "kinesis:GetShardIterator", "kinesis:ListShards"
-        ]
-        Resource = var.stream_arn
-      },
-      {
-        Sid      = "DecryptSourceRecords"
-        Effect   = "Allow"
-        Action   = ["kms:Decrypt"]
-        Resource = var.stream_kms_key_arn
-        Condition = {
-          StringEquals = {
-            "kms:ViaService"                        = "kinesis.${var.aws_region}.amazonaws.com"
-            "kms:EncryptionContext:aws:kinesis:arn" = var.stream_arn
-          }
-        }
-      },
-      {
         Sid    = "WriteProcessedRecordsToFirehose"
         Effect = "Allow"
         Action = ["firehose:PutRecord", "firehose:PutRecordBatch"]
@@ -48,25 +27,6 @@ resource "aws_iam_role_policy" "preprocess" {
           var.delivery_destinations["service"].firehose_arn,
           var.delivery_destinations["ci"].firehose_arn
         ]
-      },
-      {
-        Sid    = "SendToIngestionQueue"
-        Effect = "Allow"
-        Action = ["sqs:SendMessage"] # SendMessageBatch에도 동일한 IAM 작업을 사용합니다.
-        Resource = [
-          var.delivery_destinations["service"].queue_arn,
-          var.delivery_destinations["ci"].queue_arn
-        ]
-      },
-      {
-        Sid    = "ArchiveProcessedMessages"
-        Effect = "Allow"
-        Action = ["s3:PutObject"]
-        Resource = [
-          "${var.delivery_destinations["service"].bucket_arn}/processed/*",
-          "${var.delivery_destinations["ci"].bucket_arn}/processed/*"
-        ]
-        Condition = { StringEquals = { "s3:ResourceAccount" = var.aws_account_id } }
       },
       {
         Sid    = "WriteFunctionLogs"

@@ -9,7 +9,7 @@ output "processing_repository_name" {
 }
 
 output "processed_bucket_name" {
-  description = "SQS에 전달할 가공 메시지 본문을 보관하는 S3 버킷 이름"
+  description = "Firehose 가공 결과를 보관하는 S3 버킷 이름"
   value       = module.delivery.processed_bucket_name
 }
 
@@ -18,29 +18,9 @@ output "raw_bucket_name" {
   value       = module.archive.bucket_name
 }
 
-output "kinesis_stream_name" {
-  description = "IoT Topic Rule에서 사용할 Kinesis 스트림 이름"
-  value       = module.ingestion.stream_name
-}
-
-output "kinesis_stream_arn" {
-  description = "Lambda와 S3 직접 전달에서 사용할 Kinesis 스트림 ARN"
-  value       = module.ingestion.stream_arn
-}
-
 output "kinesis_kms_key_arn" {
-  description = "Kinesis 소스 스트림의 고객 관리형 KMS 키 ARN"
+  description = "삭제를 보류한 기존 Kinesis 암호화 키 ARN"
   value       = module.ingestion.stream_kms_key_arn
-}
-
-output "archive_channel_arn" {
-  description = "원본 데이터를 S3에 직접 전달하는 Kinesis Channel ARN"
-  value       = module.archive.channel_arn
-}
-
-output "archive_delivery_log_group" {
-  description = "S3 직접 전달의 CloudWatch 로그 그룹"
-  value       = module.archive.delivery_log_group_name
 }
 
 output "cloudwatch_dashboard_name" {
@@ -59,7 +39,7 @@ output "ingestion_queue_url" {
 }
 
 output "ingestion_queue_arn" {
-  description = "전처리 Lambda 전송 권한에 사용할 SQS ARN"
+  description = "S3 객체 알림을 수신하는 수집 큐 ARN"
   value       = module.delivery.queue_arn
 }
 
@@ -69,13 +49,8 @@ output "ingestion_dlq_url" {
 }
 
 output "processing_function_name" {
-  description = "Kinesis → SQS 처리 Lambda 이름"
+  description = "IoT 메시지를 가공해 Firehose로 전달하는 서비스 Lambda 이름"
   value       = module.processing.function_name
-}
-
-output "processing_event_source_mapping_id" {
-  description = "Kinesis → Lambda 연결 상태 확인에 사용할 UUID"
-  value       = module.processing.event_source_mapping_id
 }
 
 output "processing_log_group" {

@@ -8,26 +8,6 @@ variable "aws_region" {
   description = "관측 대상 리전"
 }
 
-variable "stream_name" {
-  type        = string
-  description = "Kinesis 스트림 이름"
-}
-
-variable "channel_name" {
-  type        = string
-  description = "S3 직접 전달 Channel 이름"
-}
-
-variable "channel_id" {
-  type        = string
-  description = "S3 직접 전달 Channel ID"
-}
-
-variable "delivery_log_group_name" {
-  type        = string
-  description = "S3 직접 전달 로그 그룹"
-}
-
 variable "queue_name" {
   type        = string
   description = "수집 큐 이름"
@@ -36,11 +16,6 @@ variable "queue_name" {
 variable "dlq_name" {
   type        = string
   description = "수집 워커용 SQS DLQ 이름"
-}
-
-variable "delivery_freshness_seconds" {
-  type        = number
-  description = "S3 전달 목표 freshness. 두 배 초과 시 지연 경보"
 }
 
 variable "queue_age_threshold_seconds" {

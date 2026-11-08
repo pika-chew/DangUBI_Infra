@@ -11,7 +11,7 @@ locals {
   }
 }
 
-# 비동기 호출에만 적용됩니다. Jenkins의 동기 호출과 Kinesis 배치 재시도는 별도입니다.
+# 비동기 호출에만 적용되며 Jenkins의 동기 호출에는 적용되지 않습니다.
 resource "aws_lambda_function_event_invoke_config" "preprocess" {
   for_each = local.async_invocation_destinations
 

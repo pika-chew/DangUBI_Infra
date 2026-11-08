@@ -1,5 +1,5 @@
 output "processed_bucket_name" {
-  description = "SQS 메시지 본문을 보관하는 가공 데이터 버킷 이름"
+  description = "Firehose 가공 결과를 보관하는 데이터 버킷 이름"
   value       = aws_s3_bucket.processed.id
 }
 
@@ -24,7 +24,7 @@ output "dlq_name" {
 }
 
 output "queue_arn" {
-  description = "전처리 Lambda 전송 권한에 사용할 SQS ARN"
+  description = "S3 객체 알림을 수신하는 수집 큐 ARN"
   value       = aws_sqs_queue.ingestion.arn
 }
 
@@ -82,22 +82,14 @@ output "lambda_destinations" {
   description = "processing 모듈이 Lambda 환경 변수와 실행 권한에 사용할 서비스·CI 대상"
   value = {
     service = {
-      bucket_name       = aws_s3_bucket.processed.id
-      bucket_arn        = aws_s3_bucket.processed.arn
-      queue_url         = aws_sqs_queue.ingestion.url
-      queue_arn         = aws_sqs_queue.ingestion.arn
-      max_message_bytes = aws_sqs_queue.ingestion.max_message_size
-      firehose_name     = aws_kinesis_firehose_delivery_stream.processed["service"].name
-      firehose_arn      = aws_kinesis_firehose_delivery_stream.processed["service"].arn
+      bucket_arn    = aws_s3_bucket.processed.arn
+      firehose_name = aws_kinesis_firehose_delivery_stream.processed["service"].name
+      firehose_arn  = aws_kinesis_firehose_delivery_stream.processed["service"].arn
     }
     ci = {
-      bucket_name       = aws_s3_bucket.processed_ci.id
-      bucket_arn        = aws_s3_bucket.processed_ci.arn
-      queue_url         = aws_sqs_queue.ingestion_ci.url
-      queue_arn         = aws_sqs_queue.ingestion_ci.arn
-      max_message_bytes = aws_sqs_queue.ingestion_ci.max_message_size
-      firehose_name     = aws_kinesis_firehose_delivery_stream.processed["ci"].name
-      firehose_arn      = aws_kinesis_firehose_delivery_stream.processed["ci"].arn
+      bucket_arn    = aws_s3_bucket.processed_ci.arn
+      firehose_name = aws_kinesis_firehose_delivery_stream.processed["ci"].name
+      firehose_arn  = aws_kinesis_firehose_delivery_stream.processed["ci"].arn
     }
   }
 

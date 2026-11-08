@@ -3,8 +3,8 @@ resource "aws_kms_key" "telemetry" {
   enable_key_rotation     = true
   deletion_window_in_days = 30
 
-  # 기본 키 정책은 계정의 IAM 정책으로 이 키의 접근 권한을 부여할 수 있게 합니다.
-  # S3 직접 전달은 AWS 관리형 alias/aws/kinesis로 암호화한 소스를 지원하지 않습니다.
+  # 다른 사용처와 복구 필요성을 확인하기 전에는 기존 키를 삭제하지 않습니다.
+  # 스트림 제거와 별개로 기존 리소스 주소와 키 설정을 유지합니다.
   tags = {
     Name = "${var.name_prefix}-kinesis"
   }

@@ -9,7 +9,7 @@ output "repository_name" {
 }
 
 output "function_name" {
-  description = "Kinesis → SQS 처리 Lambda 이름"
+  description = "IoT 메시지를 가공해 Firehose로 전달하는 서비스 Lambda 이름"
   value       = aws_lambda_function.preprocess.function_name
 }
 
@@ -22,11 +22,6 @@ output "function_arn" {
     aws_lambda_permission.iot,
     aws_lambda_function_event_invoke_config.preprocess
   ]
-}
-
-output "event_source_mapping_id" {
-  description = "Kinesis 이벤트 소스 매핑 UUID"
-  value       = aws_lambda_event_source_mapping.telemetry.uuid
 }
 
 output "function_log_group_name" {

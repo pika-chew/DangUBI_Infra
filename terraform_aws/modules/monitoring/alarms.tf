@@ -1,11 +1,4 @@
 locals {
-  # 전달 알람은 세 dimension을 모두 지정해야 실제 전달 지표와 일치합니다.
-  delivery_dimensions = {
-    ChannelName = var.channel_name
-    ChannelId   = var.channel_id
-    StreamName  = var.stream_name
-  }
-
   alarms = {
     firehose_write_throttled = {
       description = "Firehose 쓰기 제한 발생. Lambda 재시도와 스트림 수신 처리량을 확인하세요."
@@ -57,46 +50,6 @@ locals {
       threshold   = 0
       dimensions  = { FunctionName = var.processing_function_name }
     }
-    kinesis_write_throttled = {
-      description = "Kinesis 쓰기 제한 발생. 생산자의 재시도 및 스트림 처리량을 확인하세요."
-      namespace   = "AWS/Kinesis"
-      metric_name = "WriteProvisionedThroughputExceeded"
-      statistic   = "Sum"
-      period      = 60
-      evaluations = 1
-      threshold   = 0
-      dimensions  = { StreamName = var.stream_name }
-    }
-    kinesis_read_throttled = {
-      description = "Kinesis 읽기 제한 발생. 소비자의 읽기 처리량을 확인하세요."
-      namespace   = "AWS/Kinesis"
-      metric_name = "ReadProvisionedThroughputExceeded"
-      statistic   = "Sum"
-      period      = 60
-      evaluations = 1
-      threshold   = 0
-      dimensions  = { StreamName = var.stream_name }
-    }
-    archive_delivery_failed = {
-      description = "S3 직접 전달 실패. 전달 로그와 S3 delivery-errors/를 확인하세요."
-      namespace   = "AWS/Kinesis"
-      metric_name = "DeliveryToS3.FailedRecordCount"
-      statistic   = "Sum"
-      period      = 300
-      evaluations = 1
-      threshold   = 0
-      dimensions  = local.delivery_dimensions
-    }
-    archive_delivery_delayed = {
-      description = "S3 전달 데이터 지연이 목표의 두 배를 넘었습니다."
-      namespace   = "AWS/Kinesis"
-      metric_name = "DeliveryToS3.DataFreshness"
-      statistic   = "Maximum"
-      period      = 300
-      evaluations = 2
-      threshold   = var.delivery_freshness_seconds * 2
-      dimensions  = local.delivery_dimensions
-    }
     ingestion_queue_old = {
       description = "SQS에 오래 대기하는 메시지가 있습니다. 프라이빗 수집 워커를 확인하세요."
       namespace   = "AWS/SQS"
@@ -135,16 +88,6 @@ locals {
       period      = 60
       evaluations = 1
       threshold   = 0
-      dimensions  = { FunctionName = var.processing_function_name }
-    }
-    processing_iterator_old = {
-      description = "처리 Lambda의 Kinesis 읽기가 60초 이상 지연되고 있습니다."
-      namespace   = "AWS/Lambda"
-      metric_name = "IteratorAge"
-      statistic   = "Maximum"
-      period      = 60
-      evaluations = 3
-      threshold   = 60000 # 밀리초
       dimensions  = { FunctionName = var.processing_function_name }
     }
     processing_record_failures = {

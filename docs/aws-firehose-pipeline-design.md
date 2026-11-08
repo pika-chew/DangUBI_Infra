@@ -1,6 +1,6 @@
 # AWS Firehose 파이프라인 전환 설계
 
-상태: IoT Rule의 서비스 Lambda 직접 호출을 `15f5415`로 커밋했다. 현재 새 경로의 모니터링 코드를 준비했다. Kinesis 선택·복귀 분기는 두지 않으며 Kinesis 리소스 자체는 후속 정리 단계에서 제거한다. Lambda 소스 수정·이미지 준비는 사용자 측에서 별도로 진행한다. AWS에는 적용하지 않았다.
+상태: IoT Rule 변경을 `15f5415`, 모니터링 갱신을 `21363fe`로 커밋했다. 현재 Kinesis Stream·Channel·Lambda 이벤트 소스 매핑과 전용 권한·설정·로그·알람을 코드에서 제거했다. 기존 KMS 키와 AWSCC provider는 아래 사유로 유지한다. 이번 제거 변경은 사용자 요청에 따라 검증하지 않았다. Lambda 소스 수정·이미지 준비는 사용자 측에서 별도로 진행한다. AWS에는 적용하지 않았다.
 
 ## 1. 목표와 작업 범위
 
@@ -11,7 +11,7 @@
 - 별도 저장소에서 빌드한 ECR 컨테이너 이미지를 기존 Lambda에 연결한다. ECR 저장소와 digest URI를 사용하는 배포 방식을 유지한다.
 - 사용자 결정: 새 정상 수집 데이터는 가공 결과만 보관한다. 가공 전 원본의 별도 보관 경로는 추가하지 않는다.
 - 이 저장소의 변경 범위는 Terraform의 Firehose, IAM, Lambda 환경 변수·호출 설정, IoT Rule, S3 알림, 모니터링과 문서다.
-- Kinesis 제거와 새 경로 연결을 한 번에 적용하지 않는다. 준비·전환·제거를 나눈다.
+- 준비·전환·제거를 단계별 커밋으로 나눈다. 코드 작성 순서가 실제 AWS 적용 순서를 보장하지 않는다. 제거 코드 적용 전에는 새 경로와 기존 적체를 별도로 확인한다.
 
 ## 2. 기존 리소스의 처리
 
@@ -38,13 +38,13 @@ AWS 이름과 설정은 유지하고, 저장·전달 리소스의 Terraform 주�
 
 ### 모듈별 역할
 
-- `ingestion`: IoT 장치·인증서·정책·Rule. 기존 Kinesis·KMS는 전환 완료까지 이곳에 유지한다.
-- `processing`: 서비스·CI Lambda, ECR, Lambda 실행 역할·로그·호출 권한·비동기 설정. 기존 Kinesis 이벤트 소스 매핑도 제거 단계 전까지 유지한다.
+- `ingestion`: IoT 장치·인증서·정책·Rule. Stream은 제거하며 기존 KMS 키는 삭제를 보류해 같은 주소에 유지한다.
+- `processing`: 서비스·CI Lambda, ECR, Lambda 실행 역할·로그·호출 권한·비동기 설정. 기존 Kinesis 이벤트 소스 매핑은 제거한다.
 - `delivery`: Firehose, 가공 S3, SQS, Firehose 실행 역할·로그, S3 알림과 SQS 수신 정책. S3 알림은 환경별 플래그를 켤 때만 생성한다.
-- `archive`: 기존 raw 버킷·과거 원본·실패 기록과 전환 완료 전의 Channel을 유지한다. Channel 정의 파일은 새 delivery 모듈과 구분하도록 `kinesis_channel.tf`로 이름을 정리한다. 파일명 변경으로 리소스 주소는 바뀌지 않는다.
-- `monitoring`: 폴더 구조를 유지한다. delivery의 서비스 Firehose·로그와 processing의 서비스 Lambda를 받아 새 경로의 지표·알람을 관리한다. 기존 Kinesis 지표·알람은 해당 리소스 제거 단계까지 유지한다.
+- `archive`: 기존 raw 버킷·보호 설정·과거 원본·서비스 Lambda 실패 기록을 유지한다. Channel과 전용 역할·정책·로그·대기 리소스는 제거한다.
+- `monitoring`: 폴더 구조를 유지한다. delivery의 서비스 Firehose·로그와 processing의 서비스 Lambda를 받아 새 경로의 지표·알람을 관리한다. 이번 제거 단계에서 Kinesis·Channel 전용 알람 5개와 위젯 6개를 제거한다.
 
-`delivery.lambda_destinations`는 서비스·CI별 버킷 이름·ARN, 큐 URL·ARN·메시지 크기, Firehose 이름·ARN을 묶어 `processing.delivery_destinations`로 전달한다. 기존 Lambda 환경 변수의 실제 값은 유지하며, 버킷 보호 설정의 생성 순서도 delivery 출력의 의존성으로 이어간다. 외부 스크립트·Jenkins 호환성을 위해 루트 output 이름은 바꾸지 않는다.
+`delivery.lambda_destinations`는 서비스·CI별 버킷 ARN과 Firehose 이름·ARN을 `processing.delivery_destinations`로 전달한다. 버킷 보호 설정의 생성 순서도 delivery 출력의 의존성으로 이어간다. 기존 버킷·큐·함수·ECR과 새 Firehose의 루트 output은 유지하며, 제거된 Stream·Channel·이벤트 소스 매핑의 output은 없앤다.
 
 모듈 이동은 로컬 코드 변경만으로 원격 state를 수정하지 않는다. 최신 plan에서 이동과 추가·수정·삭제 내역을 확인한 뒤 apply해야 state에 새 주소가 반영된다. `moved` 블록은 이전 state를 사용하는 환경을 위해 유지한다.
 
@@ -56,14 +56,18 @@ AWS 이름과 설정은 유지하고, 저장·전달 리소스의 Terraform 주�
 - IoT Rule이 기존 서비스 Lambda를 호출할 수 있는 Lambda 리소스 정책.
 - 비동기 Lambda 호출의 재시도·실패 목적지 설정과 새 경로의 모니터링.
 
-### 전환 이후 제거할 리소스
+### 코드에서 제거한 기존 경로
 
 - `module.ingestion.aws_kinesis_stream.telemetry`.
 - `module.archive.awscc_kinesis_channel.raw`.
 - `module.processing.aws_lambda_event_source_mapping.telemetry`.
-- 위 경로에만 필요한 IAM 권한, 출력값, 변수, 로그·알람.
+- Channel 전용 IAM 역할·정책·전파 대기와 CloudWatch 로그 그룹·스트림.
+- 위 경로에만 필요한 IAM 권한, 출력값, 변수와 알람 5개·대시보드 위젯 6개.
+- Lambda의 이전 정상 데이터 S3 직접 저장·SQS 직접 전송용 권한과 환경 변수. 비동기 실패 보관용 S3 권한은 유지한다.
 
-Kinesis 암호화용 KMS 키는 사용처와 복구 필요성을 확인한 후 별도로 정리한다. 기존 raw 버킷과 그 객체는 Channel 제거 대상에 포함하지 않는다.
+Kinesis 암호화용 KMS 키 `module.ingestion.aws_kms_key.telemetry`와 기존 ARN output은 사용처·복구 필요성을 확인하기 전까지 그대로 유지한다. AWSCC provider와 archive 모듈의 provider 연결은 기존 state의 Channel 삭제에 필요하므로 유지하며, 실제 삭제 후 state에서 Channel이 사라진 것을 확인하면 별도 정리한다. 기존 raw 버킷과 그 객체는 Channel 제거 대상에 포함하지 않는다.
+
+IoT 오류 로그용 `aws_iam_role.iot_rule`은 계속 필요하다. 역할의 기존 AWS 이름에 `iot-kinesis`가 포함되어 있어도 이름을 바꾸지 않고, Kinesis 쓰기·KMS 권한만 제거한다. 새 이름으로 바꾸는 데 따른 불필요한 역할 교체를 피한다.
 
 ## 3. Firehose와 S3 저장 방식
 
@@ -94,7 +98,7 @@ Kinesis 암호화용 KMS 키는 사용처와 복구 필요성을 확인한 후 �
 
 사용자는 새 정상 수집 데이터의 가공 결과만 보관하기로 결정했다. 새 주 경로의 S3에는 Lambda가 가공한 결과를 저장하며, 가공 전 원본을 별도로 복제하는 경로는 추가하지 않는다.
 
-기존 raw 버킷과 과거 원본 객체는 유지한다. 기존 Channel은 전환 기간의 적체 처리가 끝날 때까지 유지하고 7단계에서 제거한다. 제거 이후에는 해당 경로로 새 원본이 쌓이지 않는다. 가공 과정에서 제외한 필드는 새 저장 결과만으로 복원할 수 없다.
+기존 raw 버킷과 과거 원본 객체는 유지한다. 7단계 코드에서 Channel을 제거했으며, 실제 삭제 적용은 기존 적체 처리가 끝난 뒤 진행한다. 삭제 이후에는 해당 경로로 새 원본이 쌓이지 않는다. 가공 과정에서 제외한 필드는 새 저장 결과만으로 복원할 수 없다.
 
 6절의 Lambda 최종 실패 기록은 장애 복구용으로 별도 보관하며, 실패한 입력 원문이 포함될 수 있다. 정상 데이터의 원본을 계속 수집하는 경로와 구분한다.
 
@@ -104,10 +108,10 @@ Terraform은 입력·출력 코드를 구현하지 않는다. 다음 기능을 �
 
 - IoT Rule이 전달하는 JSON 객체를 입력으로 처리한다. 현재 코드의 Kinesis `Records`·Base64 입력과 다르다.
 - 차량 식별은 인증된 디바이스의 MQTT 토픽에서 얻는 값이 기준이다. 본문에 같은 이름의 필드가 있을 때의 충돌 처리도 입력 계약에 포함한다.
-- `FIREHOSE_STREAM_NAME` 환경 변수로 대상 스트림을 받는다. 4단계 인프라 코드에서 서비스 함수와 CI 함수에 각자의 스트림 이름을 연결한다. 외부 이미지도 이 변수명을 사용해야 한다. 기존 `QUEUE_URL`, `PROCESSED_BUCKET`, `MAX_MESSAGE_BYTES`는 이전 경로 처리를 위해 유지한다.
+- `FIREHOSE_STREAM_NAME` 환경 변수로 대상 스트림을 받는다. 4단계 인프라 코드에서 서비스 함수와 CI 함수에 각자의 스트림 이름을 연결한다. 외부 이미지도 이 변수명을 사용해야 한다. 7단계에서 이전 경로용 `QUEUE_URL`, `PROCESSED_BUCKET`, `MAX_MESSAGE_BYTES`는 두 함수 모두에서 제거한다. 기존 변수를 필수로 읽는 이미지는 이 코드와 호환되지 않으므로 실제 적용 전에 서비스·CI 이미지를 함께 준비해야 한다.
 - 새 IoT 입력 경로에서는 전처리 결과를 Firehose에 보내며 S3나 수집 SQS에 직접 중복 전송하지 않는다.
 - Firehose 전송 실패를 정상 응답으로 삼키지 않는다. IoT 비동기 입력에서는 예외를 반환해야 Lambda의 함수 오류 재시도가 작동한다.
-- 전환 기간에는 기존 Kinesis 입력과 기존 환경 변수도 지원한다. 기존 적체를 처리할 수 있는 이미지를 준비한 뒤 트리거를 전환한다.
+- 중간 전환 배포에서 기존 Kinesis 적체를 처리할 때는 해당 입력을 지원하는 이미지를 사용한다. 현재 제거 코드를 적용하면 Kinesis 트리거와 이전 출력 환경 변수·전용 권한이 없어지므로 그 전에 적체 처리를 완료한다.
 - JSON 내부의 도메인 필드와 필드 선별 정책은 외부 저장소의 계약을 따른다. Java와 Python의 현재 출력 형식이 다르므로 어느 쪽이 실제 배포 이미지인지 확인하지 않고 새 스키마를 확정하지 않는다.
 
 단말 메시지를 다시 받아도 동일하게 유지되는 이벤트 식별자가 필요하다. 기존 `stream ARN + Kinesis event ID`는 새 IoT 입력에 없다. 사용할 원본 식별자와 `idempotencyKey` 계산 방식은 별도로 진행하는 Lambda·소비자 작업에서 맞춰야 하며, 인프라 코드만으로 확정하지 않는다. 단말에 고유 식별자가 없다면 해시 방식의 중복 판정 범위와 서로 다른 이벤트를 합칠 위험을 함께 정한다. 매 호출 시 생성한 UUID나 Lambda 요청 ID를 재시도 중복 제거 키로 쓰지 않는다.
@@ -148,7 +152,7 @@ S3 알림과 Standard SQS는 중복·순서 변경에 대비해야 한다. 객�
 
 - IoT Rule은 기존 서비스 함수만 호출한다. CI 함수에는 운영 MQTT 트리거를 연결하지 않는다.
 - IoT 호출은 Lambda 리소스 정책으로 허용하며 해당 Rule ARN·계정으로 제한한다. Firehose 전달용 IAM 역할과 구분한다.
-- 두 Lambda가 공유하는 기존 실행 역할에 두 Firehose 스트림의 쓰기 권한을 추가한다. 기존 S3·SQS·Kinesis 권한은 이전 경로의 처리 완료 전까지 유지한다.
+- 두 Lambda가 공유하는 기존 실행 역할의 Firehose 쓰기·로그·비동기 실패 보관 권한을 유지한다. 7단계에서 Kinesis 읽기·복호화와 이전 정상 경로의 S3 직접 저장·SQS 전송 권한은 제거한다.
 - 공유 실행 역할을 유지하므로 서비스·CI 분리는 서로 다른 환경 변수와 스트림·버킷·큐에 의한 운영상 분리다. IAM으로 서로의 리소스 접근을 차단한 보안 격리는 아니다.
 - Firehose의 실행 역할은 Lambda 실행 역할과 별도로 두고 목적지 버킷·정상 및 오류 prefix·로그에 필요한 권한만 부여한다.
 
@@ -156,7 +160,7 @@ S3 알림과 Standard SQS는 중복·순서 변경에 대비해야 한다. 객�
 
 IoT의 Lambda 호출은 비동기다. 4단계 코드의 함수 오류 재시도 횟수는 `2회`, 비동기 이벤트 최대 나이는 `21,600초(6시간)`다. 함수 오류 재시도 횟수를 스로틀링·서비스 오류에 대한 총 시도 횟수로 해석하지 않는다. Kinesis의 `batchItemFailures` 응답은 새 입력의 실패 신호로 사용할 수 없다. [IoT Lambda 호출](https://docs.aws.amazon.com/iot/latest/developerguide/lambda-rule-action.html), [비동기 오류 처리](https://docs.aws.amazon.com/lambda/latest/dg/invocation-async-error-handling.html)
 
-서비스 함수의 비동기 최종 실패는 기존 raw 버킷에, CI 함수의 실패는 CI 버킷에 보관하는 안을 사용한다. Lambda가 정하는 `aws/lambda/async/` 경로는 수집 SQS 알림에서 제외한다. 실패 목적지 전달 자체가 실패하는 경우도 있으므로 `DestinationDeliveryFailures`를 관측한다. 기존 Kinesis 이벤트 소스 매핑의 실패 목적지와 새 비동기 호출 실패 목적지는 별도 설정이다. [비동기 실패 보관](https://docs.aws.amazon.com/lambda/latest/dg/invocation-async-retain-records.html)
+서비스 함수의 비동기 최종 실패는 기존 raw 버킷에, CI 함수의 실패는 CI 버킷에 보관하는 안을 사용한다. Lambda가 정하는 `aws/lambda/async/` 경로는 수집 SQS 알림에서 제외한다. 실패 목적지 전달 자체가 실패하는 경우도 있으므로 `DestinationDeliveryFailures`를 관측한다. Kinesis 이벤트 소스 매핑의 실패 목적지는 매핑 제거와 함께 사라지며, 서비스·CI 비동기 호출 실패 목적지는 유지한다. [비동기 실패 보관](https://docs.aws.amazon.com/lambda/latest/dg/invocation-async-retain-records.html)
 
 IoT Rule에서 Lambda 서비스에 전달하지 못한 오류는 기존 IoT 오류 로그로 관측한다. 이 오류 로그를 원문 전체의 복구 저장소로 간주하지 않는다. 정상 수집 SQS와 소비자의 DLQ도 Lambda 호출 이전의 실패를 복구하지 못한다.
 
@@ -183,7 +187,7 @@ s3_queue_notifications_enabled = true
 
 서비스 S3 알림을 먼저 준비한 뒤 활성 IoT 입력을 전환한다. 알림 활성화 전에 생성된 객체가 나중에 자동으로 소급 통지된다고 가정하지 않는다.
 
-Kinesis Stream·Channel·기존 Lambda 이벤트 소스 매핑과 전용 권한·변수의 제거는 후속 정리 단계로 분리한다. 이번 Rule 수정에 해당 리소스 삭제를 섞지 않는다. 최종 구성에 Kinesis 선택지를 남기는 것은 아니다.
+Rule 수정 커밋과 분리해 7단계에서 Kinesis Stream·Channel·기존 Lambda 이벤트 소스 매핑과 전용 권한·변수를 제거했다. 실제 삭제 적용 전에는 새 경로 준비와 기존 적체의 처리 완료를 확인해야 한다.
 
 ### 새 경로의 모니터링
 
@@ -195,9 +199,9 @@ Kinesis Stream·Channel·기존 Lambda 이벤트 소스 매핑과 전용 권한�
 - Lambda `AsyncEventAge`: 60초 최댓값이 300,000밀리초(5분)를 3구간 연속 초과하면 경보.
 - Lambda `AsyncEventsDropped`: 60초 합계가 0을 초과하면 경보. 만료·재시도 소진 이벤트를 확인하는 신호이며 실패 보관 S3에 남았는지도 확인해야 한다. 기존 `DestinationDeliveryFailures` 알람도 유지한다. [Lambda 비동기 지표](https://docs.aws.amazon.com/lambda/latest/dg/monitoring-metrics-types.html)
 
-기존 13개 알람의 이름·임계값·평가 설정과 지표를 유지한다. 누락된 지표는 기존과 같이 `notBreaching`으로 처리하므로 데이터가 없다는 사실만으로 정상 전달을 증명하지 않는다. `cloudwatch_alarm_action_arns` 기본값은 빈 목록이므로 기본 설정만으로 외부 알림을 발송하지 않는다.
+모니터링 준비 커밋에서는 기존 13개 알람을 유지했다. 이후 제거 단계에서 Kinesis·Channel 전용 알람 5개를 제거해 최종 알람은 13개가 된다. 남은 알람의 이름·임계값·평가 설정은 유지한다. 누락된 지표는 기존과 같이 `notBreaching`으로 처리하므로 데이터가 없다는 사실만으로 정상 전달을 증명하지 않는다. `cloudwatch_alarm_action_arns` 기본값은 빈 목록이므로 기본 설정만으로 외부 알림을 발송하지 않는다.
 
-대시보드에 Firehose 수신·S3 전달·쓰기 제한·지연·오류 로그와 Lambda 비동기 지표 위젯 6개를 추가해 총 19개를 둔다. 기존 Kinesis·Channel 위젯은 아래로 이동하고 리소스 제거 단계에서 함께 정리한다. 기존 `processing_summary` 로그 필터는 외부 이미지가 해당 로그 형식을 유지해야 동작하며, 함수 오류·비동기 기본 지표도 함께 관측한다.
+모니터링 준비 커밋에서는 새 경로 위젯 6개를 추가해 총 19개를 뒀다. 이후 제거 단계에서 Kinesis·Channel 위젯 6개를 없애 최종 대시보드는 Firehose·Lambda·SQS·IoT 위젯 13개로 구성한다. 기존 `processing_summary` 로그 필터는 외부 이미지가 해당 로그 형식을 유지해야 동작하며, 함수 오류·비동기 기본 지표도 함께 관측한다.
 
 ## 7. 단계별 변경과 커밋 경계
 
@@ -207,7 +211,7 @@ Kinesis Stream·Channel·기존 Lambda 이벤트 소스 매핑과 전용 권한�
 4. 기존 Lambda의 권한·환경 변수·이미지 연결, CI 연동, IoT 호출 권한과 비동기 실패 설정을 준비한다. 실제 Rule 대상은 아직 바꾸지 않는다.
 5. S3 알림·SQS 정책을 준비한다. 서비스·CI 알림 기본값은 false로 두고, 서비스 소비자와 별도 Lambda 이미지 준비 이후에 각 환경을 활성화한다. 소비자 애플리케이션 코드는 이 세션에서 수정하지 않는다.
 6. IoT Rule을 기존 서비스 Lambda 직접 호출로 고정한다. 이미지·소비자·S3 알림을 준비한 뒤 실제 활성화한다. 새 경로의 로그·알람 코드도 준비한다. 실제 활성화와 기존 적체의 처리 완료 확인은 별도다.
-7. 기존 Kinesis·Channel·이벤트 소스 매핑과 불필요한 설정만 제거한다. 버킷·과거 데이터·서비스 및 CI Lambda는 유지한다.
+7. 기존 Kinesis·Channel·이벤트 소스 매핑과 불필요한 설정을 제거한다. 버킷·과거 데이터·서비스 및 CI Lambda는 유지한다. 코드 제거까지 작성했으며 AWS에 적용하지 않았다.
 
 이미지 변경, 환경 변수 준비, Rule 전환은 Terraform의 한 번의 apply 안에서 순서가 보장된다고 가정하지 않는다. 전환 단계는 필요하면 여러 번의 apply로 나누며, 복구 시에는 호환 이미지·실패 보관 이벤트·처리 중인 데이터와 소비자 상태를 함께 고려한다.
 
@@ -216,6 +220,10 @@ Kinesis Stream·Channel·기존 Lambda 이벤트 소스 매핑과 전용 권한�
 모듈 구조 정리는 Lambda 연결 준비 커밋 `d4dc407` 다음의 별도 변경으로 진행한다. 이 변경에서는 리소스의 소유 모듈과 참조를 정리하며, IoT 전송 대상 전환이나 Kinesis·Channel 제거를 함께 진행하지 않는다.
 
 ## 8. 필요한 확인과 이번 단계의 한계
+
+현재 7단계 제거 변경은 사용자 요청에 따라 `fmt -check`, `validate`, 테스트와 `plan`을 실행하지 않았다. 기존 processing 테스트 파일은 제거된 입력·리소스 참조를 새 경로에 맞춰 수정했지만 실행 결과는 없다. 포맷 정리만 수행하며 구성 유효성이나 실제 삭제·교체 범위를 확인했다고 주장하지 않는다.
+
+실제 적용 시 Stream의 미처리 데이터와 Channel 전용 로그도 삭제 대상이므로 필요한 적체 처리·로그 보존을 먼저 마쳐야 한다. 이 코드에는 Stream·Channel을 자동으로 비우고 안전한 전환을 보장하는 절차가 없다. 적용 전 외부 Lambda 이미지·소비자 준비와 최신 plan 확인이 필요하다.
 
 1단계에서는 문서의 리소스 주소와 설정을 로컬 코드 및 AWS 공식 문서와 대조했다. 2단계와 4단계에서는 추가·수정한 Terraform의 `fmt -check`와 `validate`만 수행했다. 모듈 구조 정리에서는 기존 processing mock 테스트 3개를 새 입력 구조로 조정해 실행하고, 이동한 리소스 정의와 `moved` 대응 관계도 대조했다. 5단계에서는 포맷·구성 검증 및 delivery 알림 mock 테스트 3개로 기본 비활성화·CI 단독 활성화·양쪽 활성화와 정상 prefix의 선택적 알림을 확인했다. IoT Rule 작업에서는 포맷·구성 검증, Lambda 직접 호출 mock 테스트 4개와 실제 루트 variables.tf의 전환 조건 3가지를 AWS provider·backend가 없는 임시 디렉토리에서 확인했다. 모니터링 갱신에서는 포맷·구성 검증과 기존 알람·대시보드 지표 보존 및 위젯 좌표 중복 여부를 확인했다. 이 단계에서 새 mock 테스트는 추가·실행하지 않았다. 실제 AWS를 사용하는 테스트, Docker 빌드, AWS 대상 plan·apply, 실제 메시지 송신, 지표 발생·경보 동작·대시보드 렌더링은 확인하지 않았다.
 

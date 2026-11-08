@@ -4,7 +4,7 @@ variable "name_prefix" {
 }
 
 variable "aws_region" {
-  description = "IoT ARN 및 KMS 서비스 조건에 사용할 리전"
+  description = "IoT 리소스 ARN에 사용할 리전"
   type        = string
 }
 

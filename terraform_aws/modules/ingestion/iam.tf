@@ -1,3 +1,4 @@
+# 기존 AWS 이름을 유지하며 IoT Rule 오류 로그 권한만 사용합니다.
 resource "aws_iam_role" "iot_rule" {
   name = "${var.name_prefix}-iot-kinesis"
 
@@ -22,24 +23,6 @@ resource "aws_iam_role_policy" "iot_rule" {
   policy = jsonencode({
     Version = "2012-10-17"
     Statement = [
-      {
-        Sid      = "WriteVehicleRecords"
-        Effect   = "Allow"
-        Action   = ["kinesis:PutRecord"]
-        Resource = aws_kinesis_stream.telemetry.arn
-      },
-      {
-        Sid      = "EncryptSourceRecords"
-        Effect   = "Allow"
-        Action   = ["kms:GenerateDataKey"]
-        Resource = aws_kms_key.telemetry.arn
-        Condition = {
-          StringEquals = {
-            "kms:ViaService"                        = "kinesis.${var.aws_region}.amazonaws.com"
-            "kms:EncryptionContext:aws:kinesis:arn" = aws_kinesis_stream.telemetry.arn
-          }
-        }
-      },
       {
         Sid    = "WriteRuleErrors"
         Effect = "Allow"

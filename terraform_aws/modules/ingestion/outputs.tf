@@ -1,15 +1,5 @@
-output "stream_name" {
-  description = "IoT Topic Rule에서 사용할 Kinesis 스트림 이름"
-  value       = aws_kinesis_stream.telemetry.name
-}
-
-output "stream_arn" {
-  description = "archive·processing 모듈 연동에 사용할 Kinesis 스트림 ARN"
-  value       = aws_kinesis_stream.telemetry.arn
-}
-
 output "stream_kms_key_arn" {
-  description = "전달 실행 역할에 복호화 권한을 부여할 스트림 암호화 키 ARN"
+  description = "삭제를 보류한 기존 Kinesis 암호화 키 ARN"
   value       = aws_kms_key.telemetry.arn
 }
 

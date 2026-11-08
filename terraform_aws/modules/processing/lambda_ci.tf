@@ -7,10 +7,10 @@ resource "aws_cloudwatch_log_group" "preprocess_ci" {
   retention_in_days = var.log_retention_days
 }
 
-# Jenkins가 직접 호출하는 함수이므로 운영 스트림의 소비자로 연결하지 않습니다.
+# Jenkins가 직접 호출하고 CI 전용 Firehose로 결과를 전달합니다.
 resource "aws_lambda_function" "preprocess_ci" {
   function_name = local.ci_function_name
-  description   = "CI validation of candidate processing images against isolated S3 and SQS resources"
+  description   = "CI validation of candidate processing images through a dedicated Firehose stream"
   role          = aws_iam_role.preprocess.arn
   package_type  = "Image"
   image_uri     = var.image_uri
@@ -34,9 +34,6 @@ resource "aws_lambda_function" "preprocess_ci" {
 
   environment {
     variables = {
-      QUEUE_URL            = var.delivery_destinations["ci"].queue_url
-      MAX_MESSAGE_BYTES    = tostring(var.delivery_destinations["ci"].max_message_bytes)
-      PROCESSED_BUCKET     = var.delivery_destinations["ci"].bucket_name
       FIREHOSE_STREAM_NAME = var.delivery_destinations["ci"].firehose_name
     }
   }

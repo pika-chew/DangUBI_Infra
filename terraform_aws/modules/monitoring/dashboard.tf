@@ -134,65 +134,6 @@ resource "aws_cloudwatch_dashboard" "pipeline" {
           view  = "table"
           query = "SOURCE '${var.iot_error_log_group_name}' | fields @timestamp, @message | sort @timestamp desc | limit 50"
         }
-      },
-      {
-        type = "metric", x = 0, y = 42, width = 12, height = 6
-        properties = {
-          title = "기존 Kinesis 수신·읽기 레코드", region = var.aws_region
-          view  = "timeSeries", period = 60, stat = "Sum"
-          metrics = [
-            ["AWS/Kinesis", "IncomingRecords", "StreamName", var.stream_name],
-            ["AWS/Kinesis", "GetRecords.Records", "StreamName", var.stream_name]
-          ]
-        }
-      },
-      {
-        type = "metric", x = 12, y = 42, width = 12, height = 6
-        properties = {
-          title = "기존 Kinesis 처리량 제한", region = var.aws_region
-          view  = "timeSeries", period = 60, stat = "Sum"
-          metrics = [
-            ["AWS/Kinesis", "WriteProvisionedThroughputExceeded", "StreamName", var.stream_name],
-            ["AWS/Kinesis", "ReadProvisionedThroughputExceeded", "StreamName", var.stream_name]
-          ]
-        }
-      },
-      {
-        type = "metric", x = 0, y = 48, width = 12, height = 6
-        properties = {
-          title = "기존 Channel S3 전달·실패 레코드", region = var.aws_region
-          view  = "timeSeries", period = 300, stat = "Sum"
-          metrics = [
-            ["AWS/Kinesis", "DeliveryToS3.SuccessfulRecordCount", "ChannelName", var.channel_name, "ChannelId", var.channel_id, "StreamName", var.stream_name],
-            ["AWS/Kinesis", "DeliveryToS3.FailedRecordCount", "ChannelName", var.channel_name, "ChannelId", var.channel_id, "StreamName", var.stream_name]
-          ]
-        }
-      },
-      {
-        type = "metric", x = 12, y = 48, width = 12, height = 6
-        properties = {
-          title = "기존 Channel S3 전달 데이터 지연 (초)", region = var.aws_region
-          view  = "timeSeries", period = 300, stat = "Maximum"
-          metrics = [
-            ["AWS/Kinesis", "DeliveryToS3.DataFreshness", "ChannelName", var.channel_name, "ChannelId", var.channel_id, "StreamName", var.stream_name]
-          ]
-        }
-      },
-      {
-        type = "log", x = 0, y = 54, width = 24, height = 6
-        properties = {
-          title = "기존 Channel S3 전달 로그", region = var.aws_region
-          view  = "table"
-          query = "SOURCE '${var.delivery_log_group_name}' | fields @timestamp, @message | sort @timestamp desc | limit 50"
-        }
-      },
-      {
-        type = "metric", x = 12, y = 60, width = 12, height = 6
-        properties = {
-          title   = "기존 Kinesis 소비 지연 (밀리초)", region = var.aws_region
-          view    = "timeSeries", period = 60, stat = "Maximum"
-          metrics = [["AWS/Lambda", "IteratorAge", "FunctionName", var.processing_function_name]]
-        }
       }
     ]
   })
