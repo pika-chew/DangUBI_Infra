@@ -44,3 +44,17 @@ variable "firehose_buffering_interval_seconds" {
     error_message = "Firehose 버퍼 시간은 0~900초 사이의 정수여야 합니다."
   }
 }
+
+variable "s3_queue_notifications_enabled" {
+  description = "서비스 가공 S3의 SQS 알림 활성화. 소비자 전환 준비가 끝난 뒤 true로 설정"
+  type        = bool
+  default     = false
+  nullable    = false
+}
+
+variable "ci_s3_queue_notifications_enabled" {
+  description = "CI 가공 S3의 테스트 SQS 알림 활성화. 새 Lambda 이미지 준비 후 개별 활성화"
+  type        = bool
+  default     = false
+  nullable    = false
+}

@@ -112,3 +112,11 @@ output "lambda_destinations" {
     aws_s3_bucket_policy.processed_ci_https_only
   ]
 }
+
+output "s3_queue_notifications_enabled" {
+  description = "Terraform에서 관리하는 서비스·CI S3 알림의 생성 여부"
+  value = {
+    service = contains(keys(aws_s3_bucket_notification.processed), "service")
+    ci      = contains(keys(aws_s3_bucket_notification.processed), "ci")
+  }
+}

@@ -143,6 +143,11 @@ output "processing_ci_firehose_log_group" {
   value       = module.delivery.ci_firehose_log_group_name
 }
 
+output "s3_queue_notifications_enabled" {
+  description = "Terraform에서 관리하는 서비스·CI S3 알림의 생성 여부"
+  value       = module.delivery.s3_queue_notifications_enabled
+}
+
 output "iot_device_connections" {
   description = "시뮬레이터에서 사용할 차량별 MQTT 접속 정보"
   value       = module.ingestion.iot_device_connections

@@ -1,6 +1,6 @@
 # AWS Firehose 파이프라인 전환 설계
 
-상태: 설계·Firehose 추가·기존 Lambda 연결 준비를 커밋한 뒤, 저장·전달 리소스를 delivery 모듈로 분리했다. Lambda 소스 수정·이미지 준비는 사용자 측에서 별도로 진행한다. AWS에는 적용하지 않았다.
+상태: 모듈 구조 정리를 `bb3c666`로 커밋하고, 5단계 S3→SQS 연결 설정을 추가했다. 서비스·CI 알림의 코드 기본값은 모두 비활성화다. Lambda 소스 수정·이미지 준비는 사용자 측에서 별도로 진행한다. AWS에는 적용하지 않았다.
 
 ## 1. 목표와 작업 범위
 
@@ -40,7 +40,7 @@ AWS 이름과 설정은 유지하고, 저장·전달 리소스의 Terraform 주�
 
 - `ingestion`: IoT 장치·인증서·정책·Rule. 기존 Kinesis·KMS는 전환 완료까지 이곳에 유지한다.
 - `processing`: 서비스·CI Lambda, ECR, Lambda 실행 역할·로그·호출 권한·비동기 설정. 기존 Kinesis 이벤트 소스 매핑도 제거 단계 전까지 유지한다.
-- `delivery`: Firehose, 가공 S3, SQS, Firehose 실행 역할·로그. S3 알림은 후속 단계에서 이곳에 추가한다.
+- `delivery`: Firehose, 가공 S3, SQS, Firehose 실행 역할·로그, S3 알림과 SQS 수신 정책. S3 알림은 환경별 플래그를 켤 때만 생성한다.
 - `archive`: 기존 raw 버킷·과거 원본·실패 기록과 전환 완료 전의 Channel을 유지한다. Channel 정의 파일은 새 delivery 모듈과 구분하도록 `kinesis_channel.tf`로 이름을 정리한다. 파일명 변경으로 리소스 주소는 바뀌지 않는다.
 - `monitoring`: 내부 파일을 변경하지 않는다. 루트에서 수집 큐 정보를 받는 참조만 delivery 출력으로 연결한다.
 
@@ -69,7 +69,7 @@ Kinesis 암호화용 KMS 키는 사용처와 복구 필요성을 확인한 후 �
 
 다음 수치는 구현을 시작하기 위한 제안값이며, 이미 적용된 설정이 아니다.
 
-2단계 코드에는 아래 기본값과 서비스·CI Firehose를 추가했다. 4단계에서는 기존 Lambda의 권한·환경 변수와 비동기 실패 설정 및 IoT 호출 권한을 준비한다. IoT Rule 대상과 S3 알림은 아직 변경하지 않으므로 기존 유입 경로를 유지한다. AWS에는 아직 적용하지 않았다.
+2단계 코드에는 아래 기본값과 서비스·CI Firehose를 추가했다. 4단계에서는 기존 Lambda의 권한·환경 변수와 비동기 실패 설정 및 IoT 호출 권한을 준비한다. 5단계에서 S3 알림과 수신 정책의 코드를 추가하되 알림 기본값은 꺼둔다. IoT Rule 대상은 아직 변경하지 않으므로 기존 유입 경로를 유지한다. AWS에는 아직 적용하지 않았다.
 
 - 입력: Lambda가 직접 쓰는 Direct PUT. Firehose 내부에 추가 변환 Lambda를 연결하지 않는다.
 - 서비스 스트림 이름 제안: `${name_prefix}-processed-firehose`.
@@ -118,6 +118,18 @@ Terraform은 입력·출력 코드를 구현하지 않는다. 다음 기능을 �
 
 ## 5. S3에서 SQS로 전달하는 계약
 
+5단계에서 `delivery/s3_notifications.tf`와 `delivery/sqs_policy.tf`에 연결 설정을 추가한다. 기존 버킷과 큐를 재사용하며 알림용으로 새 버킷·큐를 만들지 않는다.
+
+- `s3_queue_notifications_enabled`: 서비스 알림 생성 여부. 루트·delivery 기본값은 `false`.
+- `ci_s3_queue_notifications_enabled`: CI 알림 생성 여부. 루트·delivery 기본값은 `false`.
+- 두 플래그를 독립적으로 적용하므로 CI 알림을 먼저 켜도 서비스 알림은 생성하지 않는다.
+- 큐 정책은 알림 활성화와 별개로 두 환경 모두에 준비한다. 정책은 해당 환경 버킷의 ARN과 계정에서 오는 S3 전송만 허용한다.
+- 루트 `s3_queue_notifications_enabled` 출력은 Terraform에서 관리하는 서비스·CI 알림 리소스의 생성 여부를 보여준다. 실제 파일 수신·처리 성공을 증명하는 지표는 아니다.
+
+이미 생성한 알림의 플래그를 `true`에서 `false`로 바꾸면 이 모듈이 관리하는 버킷 알림 설정이 제거된다. 가공 데이터 버킷이나 큐를 삭제하는 것은 아니다. 현재는 어느 플래그도 켜지 않는다.
+
+첫 적용 전 기존 큐의 수동 정책을 조회하고 필요한 다른 권한을 함께 반영해야 한다. 알림 활성화 전에는 기존 버킷 알림도 조회해야 한다. `aws_sqs_queue_policy`는 큐 정책 문서를 관리하고, S3 알림 설정 API는 버킷의 전체 알림 구성을 덮어쓰므로 기존 설정이 자동으로 병합된다고 가정하지 않는다. 현재 AWS의 수동 정책·알림은 확인하지 않았다. [S3 전송 권한](https://docs.aws.amazon.com/AmazonS3/latest/userguide/grant-destinations-permissions-to-s3.html), [Terraform 알림 리소스](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/s3_bucket_notification)
+
 - 이벤트: `s3:ObjectCreated:*`. 멀티파트 업로드 완료를 포함한다.
 - 필터: `firehose/processed/` prefix만 대상으로 한다. 기존 `processed/`, `raw/`, `aws/lambda/`, `firehose-errors/`는 제외한다.
 - 대상: 기존 서비스 Standard SQS와 CI Standard SQS. 같은 리전의 버킷·큐를 사용한다.
@@ -156,7 +168,7 @@ Kinesis 제거 후에는 현재의 24시간 스트림 재읽기 기능이 없어
 2. 기존 경로를 유지한 채 서비스·CI Firehose, 쓰기 역할, 로그, 출력값을 추가한다.
 3. 사용자 측에서 별도 Lambda 저장소의 소스 수정·이미지 준비를 진행한다. 이 세션에서는 해당 작업 대신 다음 인프라 준비 단계로 진행한다. 새 입력·출력을 지원하는 이미지가 준비되기 전 실제 Rule 전환은 하지 않는다.
 4. 기존 Lambda의 권한·환경 변수·이미지 연결, CI 연동, IoT 호출 권한과 비동기 실패 설정을 준비한다. 실제 Rule 대상은 아직 바꾸지 않는다.
-5. S3 알림·SQS 정책과 소비자 연동을 준비한다. 서비스 알림 활성화는 소비자 준비 이후로 미룬다.
+5. S3 알림·SQS 정책을 준비한다. 서비스·CI 알림 기본값은 false로 두고, 서비스 소비자와 별도 Lambda 이미지 준비 이후에 각 환경을 활성화한다. 소비자 애플리케이션 코드는 이 세션에서 수정하지 않는다.
 6. 준비된 새 경로로 IoT Rule을 전환한다. 로그·알람을 새 경로에 맞추고 기존 적체의 처리 완료를 확인한다.
 7. 기존 Kinesis·Channel·이벤트 소스 매핑과 불필요한 설정만 제거한다. 버킷·과거 데이터·서비스 및 CI Lambda는 유지한다.
 
@@ -168,7 +180,7 @@ Kinesis 제거 후에는 현재의 24시간 스트림 재읽기 기능이 없어
 
 ## 8. 필요한 확인과 이번 단계의 한계
 
-1단계에서는 문서의 리소스 주소와 설정을 로컬 코드 및 AWS 공식 문서와 대조했다. 2단계와 4단계에서는 추가·수정한 Terraform의 `fmt -check`와 `validate`만 수행했다. 모듈 구조 정리에서는 기존 processing mock 테스트 3개를 새 입력 구조로 조정해 실행하고, 이동한 리소스 정의와 `moved` 대응 관계도 대조했다. 실제 AWS를 사용하는 테스트, Docker 빌드, AWS plan·apply, 실제 메시지 송신은 수행하지 않았다.
+1단계에서는 문서의 리소스 주소와 설정을 로컬 코드 및 AWS 공식 문서와 대조했다. 2단계와 4단계에서는 추가·수정한 Terraform의 `fmt -check`와 `validate`만 수행했다. 모듈 구조 정리에서는 기존 processing mock 테스트 3개를 새 입력 구조로 조정해 실행하고, 이동한 리소스 정의와 `moved` 대응 관계도 대조했다. 5단계에서는 포맷·구성 검증 및 delivery 알림 mock 테스트 3개로 기본 비활성화·CI 단독 활성화·양쪽 활성화와 정상 prefix의 선택적 알림을 확인했다. 실제 AWS를 사용하는 테스트, Docker 빌드, AWS plan·apply, 실제 메시지 송신은 수행하지 않았다.
 
 설치된 provider 스키마 조회와 모듈 초기화 중 원격 backend 인증 세션 만료를 확인했다. 일반 초기화는 인증 단계에서 완료하지 못했지만 로컬 모듈 등록 이후 구성 검증과 mock 테스트는 통과했다. 실제 AWS 계획은 확인하지 않았으며, apply 전 AWS에 다시 로그인하고 최신 plan으로 변경 범위를 확인해야 한다. 로컬 문법·참조 검증의 통과를 AWS 전달 성공이나 삭제·교체 없음의 증거로 삼지 않는다.
 
