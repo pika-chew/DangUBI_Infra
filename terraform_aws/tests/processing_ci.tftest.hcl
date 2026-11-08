@@ -36,13 +36,6 @@ mock_provider "aws" {
 mock_provider "time" {}
 
 override_resource {
-  target = aws_iam_role.preprocess_ci
-  values = {
-    arn = "arn:aws:iam::123456789012:role/ubi-dev-preprocess-ci"
-  }
-}
-
-override_resource {
   target = aws_cloudwatch_log_group.preprocess_ci
   values = {
     arn = "arn:aws:logs:ap-northeast-2:123456789012:log-group:/aws/lambda/ubi-dev-preprocess-ci"
@@ -66,7 +59,7 @@ override_resource {
 }
 
 variables {
-  image_uri                  = "123456789012.dkr.ecr.ap-northeast-2.amazonaws.com/ubi-dev-preprocess@sha256:${strrep("a", 64)}"
+  image_uri                  = "123456789012.dkr.ecr.ap-northeast-2.amazonaws.com/ubi-dev-preprocess@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
   name_prefix                = "ubi-dev"
   visibility_timeout_seconds = 120
   stream_arn                 = "arn:aws:kinesis:ap-northeast-2:123456789012:stream/ubi-dev-telemetry"
@@ -105,14 +98,25 @@ run "bootstrap_and_isolate_ci" {
   }
 
   assert {
-    condition = toset([
-      for statement in jsondecode(aws_iam_role_policy.preprocess_ci.policy).Statement : statement.Resource
-      ]) == toset([
+    condition     = aws_lambda_function.preprocess_ci.role == aws_lambda_function.preprocess.role
+    error_message = "CI must reuse the service function's execution role."
+  }
+
+  assert {
+    condition = toset(flatten([
+      for statement in jsondecode(aws_iam_role_policy.preprocess.policy).Statement : statement.Resource
+      if contains(["SendToIngestionQueue", "ArchiveProcessedMessages", "WriteFunctionLogs"], statement.Sid)
+      ])) == toset([
+      aws_sqs_queue.ingestion.arn,
       aws_sqs_queue.ingestion_ci.arn,
+      "${aws_s3_bucket.processed.arn}/processed/*",
       "${aws_s3_bucket.processed_ci.arn}/processed/*",
+      aws_cloudwatch_log_group.preprocess.arn,
+      "${aws_cloudwatch_log_group.preprocess.arn}:*",
+      aws_cloudwatch_log_group.preprocess_ci.arn,
       "${aws_cloudwatch_log_group.preprocess_ci.arn}:*"
     ])
-    error_message = "The CI role must only have access to its test queue, bucket, and logs."
+    error_message = "The shared role must retain service access and also allow the test queue, bucket, and logs."
   }
 
   assert {
@@ -132,7 +136,7 @@ run "promotion_only_updates_service_image" {
   }
 
   variables {
-    image_uri          = "123456789012.dkr.ecr.ap-northeast-2.amazonaws.com/ubi-dev-preprocess@sha256:${strrep("b", 64)}"
+    image_uri          = "123456789012.dkr.ecr.ap-northeast-2.amazonaws.com/ubi-dev-preprocess@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
     log_retention_days = 14
   }
 
@@ -142,7 +146,7 @@ run "promotion_only_updates_service_image" {
   }
 
   assert {
-    condition     = aws_lambda_function.preprocess_ci.image_uri == "123456789012.dkr.ecr.ap-northeast-2.amazonaws.com/ubi-dev-preprocess@sha256:${strrep("a", 64)}"
+    condition     = aws_lambda_function.preprocess_ci.image_uri == "123456789012.dkr.ecr.ap-northeast-2.amazonaws.com/ubi-dev-preprocess@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
     error_message = "Changing the approved digest must not overwrite the existing CI image."
   }
 
@@ -160,7 +164,7 @@ run "reject_foreign_bootstrap_repository" {
   }
 
   variables {
-    image_uri = "123456789012.dkr.ecr.ap-northeast-2.amazonaws.com/unrelated@sha256:${strrep("c", 64)}"
+    image_uri = "123456789012.dkr.ecr.ap-northeast-2.amazonaws.com/unrelated@sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
   }
 
   expect_failures = [

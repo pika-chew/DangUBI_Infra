@@ -11,7 +11,7 @@ resource "aws_cloudwatch_log_group" "preprocess_ci" {
 resource "aws_lambda_function" "preprocess_ci" {
   function_name = local.ci_function_name
   description   = "CI validation of candidate processing images against isolated S3 and SQS resources"
-  role          = aws_iam_role.preprocess_ci.arn
+  role          = aws_iam_role.preprocess.arn
   package_type  = "Image"
   image_uri     = var.image_uri
   architectures = ["arm64"]
@@ -41,7 +41,7 @@ resource "aws_lambda_function" "preprocess_ci" {
   }
 
   depends_on = [
-    time_sleep.preprocess_ci_iam_propagation,
+    time_sleep.preprocess_iam_propagation,
     aws_ecr_repository_policy.preprocess,
     aws_s3_bucket_public_access_block.processed_ci,
     aws_s3_bucket_server_side_encryption_configuration.processed_ci,

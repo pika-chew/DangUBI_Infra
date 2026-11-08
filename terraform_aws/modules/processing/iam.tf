@@ -11,6 +11,7 @@ resource "aws_iam_role" "preprocess" {
   })
 }
 
+# Both functions use this role and share its service and test resource permissions.
 resource "aws_iam_role_policy" "preprocess" {
   name = "${var.name_prefix}-preprocess"
   role = aws_iam_role.preprocess.id
@@ -40,16 +41,22 @@ resource "aws_iam_role_policy" "preprocess" {
         }
       },
       {
-        Sid      = "SendToIngestionQueue"
-        Effect   = "Allow"
-        Action   = ["sqs:SendMessage"] # SendMessageBatch에도 동일한 IAM 작업을 사용합니다.
-        Resource = aws_sqs_queue.ingestion.arn
+        Sid    = "SendToIngestionQueue"
+        Effect = "Allow"
+        Action = ["sqs:SendMessage"] # SendMessageBatch에도 동일한 IAM 작업을 사용합니다.
+        Resource = [
+          aws_sqs_queue.ingestion.arn,
+          aws_sqs_queue.ingestion_ci.arn
+        ]
       },
       {
-        Sid       = "ArchiveProcessedMessages"
-        Effect    = "Allow"
-        Action    = ["s3:PutObject"]
-        Resource  = "${aws_s3_bucket.processed.arn}/processed/*"
+        Sid    = "ArchiveProcessedMessages"
+        Effect = "Allow"
+        Action = ["s3:PutObject"]
+        Resource = [
+          "${aws_s3_bucket.processed.arn}/processed/*",
+          "${aws_s3_bucket.processed_ci.arn}/processed/*"
+        ]
         Condition = { StringEquals = { "s3:ResourceAccount" = var.aws_account_id } }
       },
       {
@@ -61,7 +68,9 @@ resource "aws_iam_role_policy" "preprocess" {
         ]
         Resource = [
           aws_cloudwatch_log_group.preprocess.arn,
-          "${aws_cloudwatch_log_group.preprocess.arn}:*"
+          "${aws_cloudwatch_log_group.preprocess.arn}:*",
+          aws_cloudwatch_log_group.preprocess_ci.arn,
+          "${aws_cloudwatch_log_group.preprocess_ci.arn}:*"
         ]
       },
       {
