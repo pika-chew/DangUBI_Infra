@@ -3,7 +3,7 @@ jenkins_dir: /opt/jenkins
 # Cinder 볼륨 마운트 경로
 jenkins_home_dir: /var/lib/jenkins
 # Dockerfile/plugins.txt를 바꾸면 끝 숫자를 올린다 (이미지 재빌드)
-jenkins_image: custom-jenkins:lts-jdk21-3
+jenkins_image: custom-jenkins:lts-jdk21-4
 # 컨테이너 네트워크 MTU. VM NIC(ens3) MTU보다 크면 큰 패킷이 버려져 HTTPS 핸드셰이크가 멈춘다
 jenkins_docker_mtu: 1450
 # 업데이트 센터 등 외부 HTTP 호출이 무한 대기하지 않도록 하는 타임아웃 (ms)
