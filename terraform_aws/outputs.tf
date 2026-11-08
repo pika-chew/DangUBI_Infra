@@ -10,7 +10,7 @@ output "processing_repository_name" {
 
 output "processed_bucket_name" {
   description = "SQS에 전달할 가공 메시지 본문을 보관하는 S3 버킷 이름"
-  value       = module.processing.processed_bucket_name
+  value       = module.delivery.processed_bucket_name
 }
 
 output "raw_bucket_name" {
@@ -55,17 +55,17 @@ output "cloudwatch_alarm_names" {
 
 output "ingestion_queue_url" {
   description = "프라이빗 클라우드 수집 워커가 사용할 SQS URL"
-  value       = module.processing.queue_url
+  value       = module.delivery.queue_url
 }
 
 output "ingestion_queue_arn" {
   description = "전처리 Lambda 전송 권한에 사용할 SQS ARN"
-  value       = module.processing.queue_arn
+  value       = module.delivery.queue_arn
 }
 
 output "ingestion_dlq_url" {
   description = "처리 실패 메시지가 모이는 DLQ URL"
-  value       = module.processing.dlq_url
+  value       = module.delivery.dlq_url
 }
 
 output "processing_function_name" {
@@ -100,47 +100,47 @@ output "processing_ci_log_group" {
 
 output "processing_ci_queue_url" {
   description = "Jenkins 검증 결과 확인용 SQS URL"
-  value       = module.processing.ci_queue_url
+  value       = module.delivery.ci_queue_url
 }
 
 output "processing_ci_queue_arn" {
   description = "Jenkins 검증 결과 확인용 SQS ARN"
-  value       = module.processing.ci_queue_arn
+  value       = module.delivery.ci_queue_arn
 }
 
 output "processing_ci_processed_bucket_name" {
   description = "Jenkins 검증 결과 확인용 S3 버킷 이름"
-  value       = module.processing.ci_processed_bucket_name
+  value       = module.delivery.ci_processed_bucket_name
 }
 
 output "processing_firehose_stream_name" {
   description = "서비스 Lambda용 Firehose 이름"
-  value       = module.processing.firehose_stream_name
+  value       = module.delivery.firehose_stream_name
 }
 
 output "processing_firehose_stream_arn" {
   description = "서비스 Firehose 쓰기 권한 범위를 제한할 ARN"
-  value       = module.processing.firehose_stream_arn
+  value       = module.delivery.firehose_stream_arn
 }
 
 output "processing_firehose_log_group" {
   description = "서비스 Firehose의 S3 전달 오류 로그 그룹"
-  value       = module.processing.firehose_log_group_name
+  value       = module.delivery.firehose_log_group_name
 }
 
 output "processing_ci_firehose_stream_name" {
   description = "CI Lambda용 테스트 Firehose 이름"
-  value       = module.processing.ci_firehose_stream_name
+  value       = module.delivery.ci_firehose_stream_name
 }
 
 output "processing_ci_firehose_stream_arn" {
   description = "CI Firehose 쓰기 권한 범위를 제한할 ARN"
-  value       = module.processing.ci_firehose_stream_arn
+  value       = module.delivery.ci_firehose_stream_arn
 }
 
 output "processing_ci_firehose_log_group" {
   description = "CI Firehose의 S3 전달 오류 로그 그룹"
-  value       = module.processing.ci_firehose_log_group_name
+  value       = module.delivery.ci_firehose_log_group_name
 }
 
 output "iot_device_connections" {

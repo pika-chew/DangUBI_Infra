@@ -1,6 +1,6 @@
 # AWS Firehose 파이프라인 전환 설계
 
-상태: 1·2단계는 커밋했고, 기존 Lambda 연결을 준비하는 4단계 인프라 코드를 추가했다. 3단계의 Lambda 소스 수정·이미지 준비는 사용자 측에서 별도로 진행한다. AWS에는 적용하지 않았다.
+상태: 설계·Firehose 추가·기존 Lambda 연결 준비를 커밋한 뒤, 저장·전달 리소스를 delivery 모듈로 분리했다. Lambda 소스 수정·이미지 준비는 사용자 측에서 별도로 진행한다. AWS에는 적용하지 않았다.
 
 ## 1. 목표와 작업 범위
 
@@ -27,14 +27,26 @@
 - `module.processing.aws_lambda_function.preprocess_ci`: Jenkins가 직접 호출하는 CI 함수.
 - `module.processing.aws_ecr_repository.preprocess`: 이미지 저장소.
 - `module.processing.aws_iam_role.preprocess`: 두 함수가 공유하는 실행 역할.
-- `module.processing.aws_s3_bucket.processed`: 새 서비스 Firehose의 저장 목적지.
-- `module.processing.aws_s3_bucket.processed_ci`: 새 CI Firehose의 저장 목적지.
-- `module.processing.aws_sqs_queue.ingestion` 및 `ingestion_dlq`: 서비스 수집 큐와 DLQ.
-- `module.processing.aws_sqs_queue.ingestion_ci`: CI 결과 확인용 큐.
+- `module.delivery.aws_s3_bucket.processed`: 새 서비스 Firehose의 저장 목적지.
+- `module.delivery.aws_s3_bucket.processed_ci`: 새 CI Firehose의 저장 목적지.
+- `module.delivery.aws_sqs_queue.ingestion` 및 `ingestion_dlq`: 서비스 수집 큐와 DLQ.
+- `module.delivery.aws_sqs_queue.ingestion_ci`: CI 결과 확인용 큐.
 - `module.archive.aws_s3_bucket.raw`: 기존 원본·실패 기록 보관 버킷. 기존 객체와 버킷을 유지한다.
 - 기존 IoT Thing, 인증서, 디바이스 정책과 연결, Topic Rule.
 
-기존 주소와 AWS 이름을 유지한다. 모듈 이동이 필요해지면 별도 변경으로 다루고, 주소 변경만으로 삭제·재생성되지 않도록 `moved`를 사용한다.
+AWS 이름과 설정은 유지하고, 저장·전달 리소스의 Terraform 주소만 `module.processing`에서 `module.delivery`로 옮긴다. 루트 `terraform_aws/moved.tf`의 20개 `moved` 블록으로 이전 주소와 새 주소를 연결한다. `for_each`의 `service`·`ci` 키도 그대로 유지한다. 기존 state에 없는 Firehose 등은 이전 단계의 추가 계획에 따라 새로 생성될 수 있다.
+
+### 모듈별 역할
+
+- `ingestion`: IoT 장치·인증서·정책·Rule. 기존 Kinesis·KMS는 전환 완료까지 이곳에 유지한다.
+- `processing`: 서비스·CI Lambda, ECR, Lambda 실행 역할·로그·호출 권한·비동기 설정. 기존 Kinesis 이벤트 소스 매핑도 제거 단계 전까지 유지한다.
+- `delivery`: Firehose, 가공 S3, SQS, Firehose 실행 역할·로그. S3 알림은 후속 단계에서 이곳에 추가한다.
+- `archive`: 기존 raw 버킷·과거 원본·실패 기록과 전환 완료 전의 Channel을 유지한다. Channel 정의 파일은 새 delivery 모듈과 구분하도록 `kinesis_channel.tf`로 이름을 정리한다. 파일명 변경으로 리소스 주소는 바뀌지 않는다.
+- `monitoring`: 내부 파일을 변경하지 않는다. 루트에서 수집 큐 정보를 받는 참조만 delivery 출력으로 연결한다.
+
+`delivery.lambda_destinations`는 서비스·CI별 버킷 이름·ARN, 큐 URL·ARN·메시지 크기, Firehose 이름·ARN을 묶어 `processing.delivery_destinations`로 전달한다. 기존 Lambda 환경 변수의 실제 값은 유지하며, 버킷 보호 설정의 생성 순서도 delivery 출력의 의존성으로 이어간다. 외부 스크립트·Jenkins 호환성을 위해 루트 output 이름은 바꾸지 않는다.
+
+모듈 이동은 로컬 코드 변경만으로 원격 state를 수정하지 않는다. 최신 plan에서 이동과 추가·수정·삭제 내역을 확인한 뒤 apply해야 state에 새 주소가 반영된다. `moved` 블록은 이전 state를 사용하는 환경을 위해 유지한다.
 
 ### 추가할 리소스
 
@@ -72,7 +84,7 @@ Kinesis 암호화용 KMS 키는 사용처와 복구 필요성을 확인한 후 �
 - 기존 S3 암호화·공개 접근 차단을 유지하고, 서비스 버킷의 버전 관리와 CI 버킷의 테스트 데이터 수명주기를 유지한다.
 - Firehose 수신 버퍼는 AWS 소유 키로 암호화하고, S3 객체에는 기존 SSE-S3를 사용한다. 원본 별도 백업은 켜지 않는다.
 
-서비스·CI 설정은 `module.processing.aws_kinesis_firehose_delivery_stream.processed["service"]`와 `["ci"]`로 관리한다. 버퍼 크기와 시간은 루트의 `firehose_buffering_size_mib`와 `firehose_buffering_interval_seconds`로 조정한다. 스트림별로 목적지 버킷·prefix·로그에 접근하는 별도 Firehose 실행 역할을 사용한다.
+서비스·CI 설정은 `module.delivery.aws_kinesis_firehose_delivery_stream.processed["service"]`와 `["ci"]`로 관리한다. 버퍼 크기와 시간은 루트의 `firehose_buffering_size_mib`와 `firehose_buffering_interval_seconds`로 조정한다. 스트림별로 목적지 버킷·prefix·로그에 접근하는 별도 Firehose 실행 역할을 사용한다.
 
 버퍼 값은 힌트다. `60초`를 종단 간 전달 지연의 상한으로 약속하지 않는다. S3 쓰기·이벤트 알림·SQS 소비 시간도 추가된다. [버퍼 설정](https://docs.aws.amazon.com/firehose/latest/APIReference/API_BufferingHints.html), [레코드 결합](https://docs.aws.amazon.com/firehose/latest/dev/basic-deliver.html), [prefix 시간 기준](https://docs.aws.amazon.com/firehose/latest/dev/s3-prefixes.html)
 
@@ -152,11 +164,13 @@ Kinesis 제거 후에는 현재의 24시간 스트림 재읽기 기능이 없어
 
 각 단계는 사용자가 검토·커밋한 뒤 다음 단계로 넘어간다. 커밋했다고 AWS에 적용되는 것은 아니다.
 
+모듈 구조 정리는 Lambda 연결 준비 커밋 `d4dc407` 다음의 별도 변경으로 진행한다. 이 변경에서는 리소스의 소유 모듈과 참조를 정리하며, IoT 전송 대상 전환이나 Kinesis·Channel 제거를 함께 진행하지 않는다.
+
 ## 8. 필요한 확인과 이번 단계의 한계
 
-1단계에서는 문서의 리소스 주소와 설정을 로컬 코드 및 AWS 공식 문서와 대조했다. 2단계와 4단계에서는 추가·수정한 Terraform의 `fmt -check`와 `validate`만 수행했다. 자동 테스트, Docker 빌드, AWS plan·apply, 실제 메시지 송신은 수행하지 않았다.
+1단계에서는 문서의 리소스 주소와 설정을 로컬 코드 및 AWS 공식 문서와 대조했다. 2단계와 4단계에서는 추가·수정한 Terraform의 `fmt -check`와 `validate`만 수행했다. 모듈 구조 정리에서는 기존 processing mock 테스트 3개를 새 입력 구조로 조정해 실행하고, 이동한 리소스 정의와 `moved` 대응 관계도 대조했다. 실제 AWS를 사용하는 테스트, Docker 빌드, AWS plan·apply, 실제 메시지 송신은 수행하지 않았다.
 
-설치된 provider 스키마 조회 중 원격 backend 인증 세션 만료를 확인했다. 실제 AWS 계획은 확인하지 않았으며, apply 전 AWS에 다시 로그인하고 최신 plan으로 변경 범위를 확인해야 한다. 로컬 문법·참조 검증의 통과를 AWS 전달 성공이나 삭제·교체 없음의 증거로 삼지 않는다.
+설치된 provider 스키마 조회와 모듈 초기화 중 원격 backend 인증 세션 만료를 확인했다. 일반 초기화는 인증 단계에서 완료하지 못했지만 로컬 모듈 등록 이후 구성 검증과 mock 테스트는 통과했다. 실제 AWS 계획은 확인하지 않았으며, apply 전 AWS에 다시 로그인하고 최신 plan으로 변경 범위를 확인해야 한다. 로컬 문법·참조 검증의 통과를 AWS 전달 성공이나 삭제·교체 없음의 증거로 삼지 않는다.
 
 이후 필요성이 생기는 시점에 사용자에게 알릴 최소 확인은 다음과 같다.
 

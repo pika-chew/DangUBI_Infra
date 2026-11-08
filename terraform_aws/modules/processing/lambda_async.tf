@@ -6,7 +6,7 @@ locals {
     }
     ci = {
       function_name      = aws_lambda_function.preprocess_ci.function_name
-      failure_bucket_arn = aws_s3_bucket.processed_ci.arn
+      failure_bucket_arn = var.delivery_destinations["ci"].bucket_arn
     }
   }
 }

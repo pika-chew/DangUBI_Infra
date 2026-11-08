@@ -34,18 +34,15 @@ resource "aws_lambda_function" "preprocess_ci" {
 
   environment {
     variables = {
-      QUEUE_URL            = aws_sqs_queue.ingestion_ci.url
-      MAX_MESSAGE_BYTES    = tostring(aws_sqs_queue.ingestion_ci.max_message_size)
-      PROCESSED_BUCKET     = aws_s3_bucket.processed_ci.id
-      FIREHOSE_STREAM_NAME = aws_kinesis_firehose_delivery_stream.processed["ci"].name
+      QUEUE_URL            = var.delivery_destinations["ci"].queue_url
+      MAX_MESSAGE_BYTES    = tostring(var.delivery_destinations["ci"].max_message_bytes)
+      PROCESSED_BUCKET     = var.delivery_destinations["ci"].bucket_name
+      FIREHOSE_STREAM_NAME = var.delivery_destinations["ci"].firehose_name
     }
   }
 
   depends_on = [
     time_sleep.preprocess_iam_propagation,
     aws_ecr_repository_policy.preprocess,
-    aws_s3_bucket_public_access_block.processed_ci,
-    aws_s3_bucket_server_side_encryption_configuration.processed_ci,
-    aws_s3_bucket_policy.processed_ci_https_only
   ]
 }

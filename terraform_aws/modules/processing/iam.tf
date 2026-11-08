@@ -45,8 +45,8 @@ resource "aws_iam_role_policy" "preprocess" {
         Effect = "Allow"
         Action = ["firehose:PutRecord", "firehose:PutRecordBatch"]
         Resource = [
-          aws_kinesis_firehose_delivery_stream.processed["service"].arn,
-          aws_kinesis_firehose_delivery_stream.processed["ci"].arn
+          var.delivery_destinations["service"].firehose_arn,
+          var.delivery_destinations["ci"].firehose_arn
         ]
       },
       {
@@ -54,8 +54,8 @@ resource "aws_iam_role_policy" "preprocess" {
         Effect = "Allow"
         Action = ["sqs:SendMessage"] # SendMessageBatch에도 동일한 IAM 작업을 사용합니다.
         Resource = [
-          aws_sqs_queue.ingestion.arn,
-          aws_sqs_queue.ingestion_ci.arn
+          var.delivery_destinations["service"].queue_arn,
+          var.delivery_destinations["ci"].queue_arn
         ]
       },
       {
@@ -63,8 +63,8 @@ resource "aws_iam_role_policy" "preprocess" {
         Effect = "Allow"
         Action = ["s3:PutObject"]
         Resource = [
-          "${aws_s3_bucket.processed.arn}/processed/*",
-          "${aws_s3_bucket.processed_ci.arn}/processed/*"
+          "${var.delivery_destinations["service"].bucket_arn}/processed/*",
+          "${var.delivery_destinations["ci"].bucket_arn}/processed/*"
         ]
         Condition = { StringEquals = { "s3:ResourceAccount" = var.aws_account_id } }
       },
@@ -86,7 +86,7 @@ resource "aws_iam_role_policy" "preprocess" {
         Sid       = "InspectFailureDestination"
         Effect    = "Allow"
         Action    = ["s3:ListBucket", "s3:GetBucketLocation"]
-        Resource  = [var.failure_bucket_arn, aws_s3_bucket.processed_ci.arn]
+        Resource  = [var.failure_bucket_arn, var.delivery_destinations["ci"].bucket_arn]
         Condition = { StringEquals = { "s3:ResourceAccount" = var.aws_account_id } }
       },
       {
@@ -97,7 +97,7 @@ resource "aws_iam_role_policy" "preprocess" {
         # 실제 실패 이벤트 저장 경로는 Lambda가 aws/lambda/ 아래로 정합니다.
         Resource = [
           "${var.failure_bucket_arn}/*",
-          "${aws_s3_bucket.processed_ci.arn}/*"
+          "${var.delivery_destinations["ci"].bucket_arn}/*"
         ]
         Condition = { StringEquals = { "s3:ResourceAccount" = var.aws_account_id } }
       }

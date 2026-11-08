@@ -37,24 +37,33 @@ module "archive" {
   }
 }
 
+module "delivery" {
+  source = "./modules/delivery"
+
+  name_prefix                         = local.name_prefix
+  aws_region                          = var.aws_region
+  aws_account_id                      = var.aws_account_id
+  log_retention_days                  = var.cloudwatch_log_retention_days
+  visibility_timeout_seconds          = var.sqs_visibility_timeout_seconds
+  firehose_buffering_size_mib         = var.firehose_buffering_size_mib
+  firehose_buffering_interval_seconds = var.firehose_buffering_interval_seconds
+}
+
 module "processing" {
   source = "./modules/processing"
 
-  image_uri                  = var.processing_image_uri
-  name_prefix                = local.name_prefix
-  visibility_timeout_seconds = var.sqs_visibility_timeout_seconds
-  stream_arn                 = module.ingestion.stream_arn
-  stream_kms_key_arn         = module.ingestion.stream_kms_key_arn
-  failure_bucket_arn         = module.archive.bucket_arn
-  aws_region                 = var.aws_region
-  aws_account_id             = var.aws_account_id
-  log_retention_days         = var.cloudwatch_log_retention_days
-  batch_size                 = var.processing_batch_size
-  consumer_enabled           = var.processing_consumer_enabled
-
-  firehose_buffering_size_mib         = var.firehose_buffering_size_mib
-  firehose_buffering_interval_seconds = var.firehose_buffering_interval_seconds
-  iot_rule_arn                        = module.ingestion.iot_rule_arn
+  image_uri             = var.processing_image_uri
+  name_prefix           = local.name_prefix
+  stream_arn            = module.ingestion.stream_arn
+  stream_kms_key_arn    = module.ingestion.stream_kms_key_arn
+  failure_bucket_arn    = module.archive.bucket_arn
+  aws_region            = var.aws_region
+  aws_account_id        = var.aws_account_id
+  log_retention_days    = var.cloudwatch_log_retention_days
+  batch_size            = var.processing_batch_size
+  consumer_enabled      = var.processing_consumer_enabled
+  iot_rule_arn          = module.ingestion.iot_rule_arn
+  delivery_destinations = module.delivery.lambda_destinations
 }
 
 module "monitoring" {
@@ -66,8 +75,8 @@ module "monitoring" {
   channel_name                = module.archive.channel_name
   channel_id                  = module.archive.channel_id
   delivery_log_group_name     = module.archive.delivery_log_group_name
-  queue_name                  = module.processing.queue_name
-  dlq_name                    = module.processing.dlq_name
+  queue_name                  = module.delivery.queue_name
+  dlq_name                    = module.delivery.dlq_name
   delivery_freshness_seconds  = var.archive_delivery_freshness_seconds
   queue_age_threshold_seconds = var.sqs_age_alarm_threshold_seconds
   alarm_action_arns           = var.cloudwatch_alarm_action_arns

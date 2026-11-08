@@ -1,4 +1,4 @@
-# All providers are mocked; these tests never deploy AWS resources.
+# 모든 provider를 모의 객체로 대체하므로 실제 AWS 리소스를 배포하지 않습니다.
 mock_provider "aws" {
   mock_resource "aws_ecr_repository" {
     defaults = {
@@ -42,34 +42,37 @@ override_resource {
   }
 }
 
-override_resource {
-  target = aws_sqs_queue.ingestion_ci
-  values = {
-    arn = "arn:aws:sqs:ap-northeast-2:123456789012:ubi-dev-ingestion-ci"
-    url = "https://sqs.ap-northeast-2.amazonaws.com/123456789012/ubi-dev-ingestion-ci"
-  }
-}
-
-override_resource {
-  target = aws_s3_bucket.processed_ci
-  values = {
-    id  = "ubi-dev-processed-ci-123456789012-ap-northeast-2"
-    arn = "arn:aws:s3:::ubi-dev-processed-ci-123456789012-ap-northeast-2"
-  }
-}
-
 variables {
-  image_uri                  = "123456789012.dkr.ecr.ap-northeast-2.amazonaws.com/ubi-dev-preprocess@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
-  name_prefix                = "ubi-dev"
-  visibility_timeout_seconds = 120
-  stream_arn                 = "arn:aws:kinesis:ap-northeast-2:123456789012:stream/ubi-dev-telemetry"
-  stream_kms_key_arn         = "arn:aws:kms:ap-northeast-2:123456789012:key/11111111-1111-1111-1111-111111111111"
-  failure_bucket_arn         = "arn:aws:s3:::ubi-dev-failures"
-  aws_region                 = "ap-northeast-2"
-  aws_account_id             = "123456789012"
-  log_retention_days         = 7
-  batch_size                 = 100
-  consumer_enabled           = true
+  image_uri          = "123456789012.dkr.ecr.ap-northeast-2.amazonaws.com/ubi-dev-preprocess@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  name_prefix        = "ubi-dev"
+  stream_arn         = "arn:aws:kinesis:ap-northeast-2:123456789012:stream/ubi-dev-telemetry"
+  stream_kms_key_arn = "arn:aws:kms:ap-northeast-2:123456789012:key/11111111-1111-1111-1111-111111111111"
+  failure_bucket_arn = "arn:aws:s3:::ubi-dev-failures"
+  aws_region         = "ap-northeast-2"
+  aws_account_id     = "123456789012"
+  log_retention_days = 7
+  batch_size         = 100
+  consumer_enabled   = true
+  delivery_destinations = {
+    service = {
+      bucket_name       = "ubi-dev-processed-123456789012-ap-northeast-2"
+      bucket_arn        = "arn:aws:s3:::ubi-dev-processed-123456789012-ap-northeast-2"
+      queue_url         = "https://sqs.ap-northeast-2.amazonaws.com/123456789012/ubi-dev-ingestion"
+      queue_arn         = "arn:aws:sqs:ap-northeast-2:123456789012:ubi-dev-ingestion"
+      max_message_bytes = 262144
+      firehose_name     = "ubi-dev-processed-firehose"
+      firehose_arn      = "arn:aws:firehose:ap-northeast-2:123456789012:deliverystream/ubi-dev-processed-firehose"
+    }
+    ci = {
+      bucket_name       = "ubi-dev-processed-ci-123456789012-ap-northeast-2"
+      bucket_arn        = "arn:aws:s3:::ubi-dev-processed-ci-123456789012-ap-northeast-2"
+      queue_url         = "https://sqs.ap-northeast-2.amazonaws.com/123456789012/ubi-dev-ingestion-ci"
+      queue_arn         = "arn:aws:sqs:ap-northeast-2:123456789012:ubi-dev-ingestion-ci"
+      max_message_bytes = 262144
+      firehose_name     = "ubi-dev-processed-ci-firehose"
+      firehose_arn      = "arn:aws:firehose:ap-northeast-2:123456789012:deliverystream/ubi-dev-processed-ci-firehose"
+    }
+  }
 }
 
 run "bootstrap_and_isolate_ci" {
@@ -107,10 +110,10 @@ run "bootstrap_and_isolate_ci" {
       for statement in jsondecode(aws_iam_role_policy.preprocess.policy).Statement : statement.Resource
       if contains(["SendToIngestionQueue", "ArchiveProcessedMessages", "WriteFunctionLogs"], statement.Sid)
       ])) == toset([
-      aws_sqs_queue.ingestion.arn,
-      aws_sqs_queue.ingestion_ci.arn,
-      "${aws_s3_bucket.processed.arn}/processed/*",
-      "${aws_s3_bucket.processed_ci.arn}/processed/*",
+      var.delivery_destinations["service"].queue_arn,
+      var.delivery_destinations["ci"].queue_arn,
+      "${var.delivery_destinations["service"].bucket_arn}/processed/*",
+      "${var.delivery_destinations["ci"].bucket_arn}/processed/*",
       aws_cloudwatch_log_group.preprocess.arn,
       "${aws_cloudwatch_log_group.preprocess.arn}:*",
       aws_cloudwatch_log_group.preprocess_ci.arn,

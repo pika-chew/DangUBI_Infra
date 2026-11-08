@@ -9,11 +9,6 @@ variable "name_prefix" {
   type        = string
 }
 
-variable "visibility_timeout_seconds" {
-  description = "수집 워커의 메시지 처리 중 숨김 시간(초)"
-  type        = number
-}
-
 variable "stream_arn" {
   description = "Lambda가 읽을 Kinesis 스트림 ARN"
   type        = string
@@ -60,24 +55,20 @@ variable "iot_rule_arn" {
   default     = null
 }
 
-variable "firehose_buffering_size_mib" {
-  description = "서비스·CI Firehose의 S3 전달 버퍼 크기 힌트(MiB)"
-  type        = number
-  default     = 5
+variable "delivery_destinations" {
+  description = "delivery 모듈에서 전달하는 서비스·CI Lambda의 저장·전송 대상"
+  type = map(object({
+    bucket_name       = string
+    bucket_arn        = string
+    queue_url         = string
+    queue_arn         = string
+    max_message_bytes = number
+    firehose_name     = string
+    firehose_arn      = string
+  }))
 
   validation {
-    condition     = var.firehose_buffering_size_mib >= 1 && var.firehose_buffering_size_mib <= 128 && floor(var.firehose_buffering_size_mib) == var.firehose_buffering_size_mib
-    error_message = "Firehose 버퍼 크기는 1~128 MiB 사이의 정수여야 합니다."
-  }
-}
-
-variable "firehose_buffering_interval_seconds" {
-  description = "서비스·CI Firehose의 S3 전달 버퍼 시간 힌트(초). 종단 간 지연 상한이 아님"
-  type        = number
-  default     = 60
-
-  validation {
-    condition     = var.firehose_buffering_interval_seconds >= 0 && var.firehose_buffering_interval_seconds <= 900 && floor(var.firehose_buffering_interval_seconds) == var.firehose_buffering_interval_seconds
-    error_message = "Firehose 버퍼 시간은 0~900초 사이의 정수여야 합니다."
+    condition     = toset(keys(var.delivery_destinations)) == toset(["service", "ci"])
+    error_message = "저장·전송 대상은 service와 ci 두 환경을 모두 포함해야 합니다."
   }
 }
