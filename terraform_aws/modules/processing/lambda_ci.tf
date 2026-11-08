@@ -7,7 +7,7 @@ resource "aws_cloudwatch_log_group" "preprocess_ci" {
   retention_in_days = var.log_retention_days
 }
 
-# Jenkins invokes this function directly; it must not consume the source stream.
+# Jenkins가 직접 호출하는 함수이므로 운영 스트림의 소비자로 연결하지 않습니다.
 resource "aws_lambda_function" "preprocess_ci" {
   function_name = local.ci_function_name
   description   = "CI validation of candidate processing images against isolated S3 and SQS resources"
@@ -19,7 +19,7 @@ resource "aws_lambda_function" "preprocess_ci" {
   memory_size   = 128
 
   lifecycle {
-    # Bootstrap from the approved image; Jenkins owns subsequent image updates.
+    # 최초 생성에는 승인된 이미지를 쓰고, 이후 이미지 갱신은 Jenkins가 담당합니다.
     ignore_changes = [image_uri]
 
     precondition {
@@ -34,9 +34,10 @@ resource "aws_lambda_function" "preprocess_ci" {
 
   environment {
     variables = {
-      QUEUE_URL         = aws_sqs_queue.ingestion_ci.url
-      MAX_MESSAGE_BYTES = tostring(aws_sqs_queue.ingestion_ci.max_message_size)
-      PROCESSED_BUCKET  = aws_s3_bucket.processed_ci.id
+      QUEUE_URL            = aws_sqs_queue.ingestion_ci.url
+      MAX_MESSAGE_BYTES    = tostring(aws_sqs_queue.ingestion_ci.max_message_size)
+      PROCESSED_BUCKET     = aws_s3_bucket.processed_ci.id
+      FIREHOSE_STREAM_NAME = aws_kinesis_firehose_delivery_stream.processed["ci"].name
     }
   }
 

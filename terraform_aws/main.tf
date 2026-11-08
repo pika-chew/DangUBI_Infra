@@ -54,6 +54,7 @@ module "processing" {
 
   firehose_buffering_size_mib         = var.firehose_buffering_size_mib
   firehose_buffering_interval_seconds = var.firehose_buffering_interval_seconds
+  iot_rule_arn                        = module.ingestion.iot_rule_arn
 }
 
 module "monitoring" {

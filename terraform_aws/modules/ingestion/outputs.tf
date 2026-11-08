@@ -37,6 +37,12 @@ output "iot_rule_name" {
   value       = aws_iot_topic_rule.telemetry.name
 }
 
+output "iot_rule_arn" {
+  description = "서비스 Lambda의 호출 권한을 해당 IoT Rule로 제한할 ARN"
+  # Rule 리소스 대신 사전에 계산한 ARN을 전달해 전환 단계의 순환 의존을 피합니다.
+  value = local.iot_rule_arn
+}
+
 output "iot_error_log_group_name" {
   description = "IoT 규칙의 Kinesis 전달 오류 로그 그룹"
   value       = aws_cloudwatch_log_group.iot_errors.name

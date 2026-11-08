@@ -30,9 +30,10 @@ resource "aws_lambda_function" "preprocess" {
 
   environment {
     variables = {
-      QUEUE_URL         = aws_sqs_queue.ingestion.url
-      MAX_MESSAGE_BYTES = tostring(aws_sqs_queue.ingestion.max_message_size)
-      PROCESSED_BUCKET  = aws_s3_bucket.processed.id
+      QUEUE_URL            = aws_sqs_queue.ingestion.url
+      MAX_MESSAGE_BYTES    = tostring(aws_sqs_queue.ingestion.max_message_size)
+      PROCESSED_BUCKET     = aws_s3_bucket.processed.id
+      FIREHOSE_STREAM_NAME = aws_kinesis_firehose_delivery_stream.processed["service"].name
     }
   }
 

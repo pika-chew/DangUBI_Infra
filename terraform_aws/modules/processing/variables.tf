@@ -54,6 +54,12 @@ variable "consumer_enabled" {
   type        = bool
 }
 
+variable "iot_rule_arn" {
+  description = "서비스 Lambda 직접 호출을 허용할 IoT Rule ARN. null이면 호출 권한을 생성하지 않음"
+  type        = string
+  default     = null
+}
+
 variable "firehose_buffering_size_mib" {
   description = "서비스·CI Firehose의 S3 전달 버퍼 크기 힌트(MiB)"
   type        = number

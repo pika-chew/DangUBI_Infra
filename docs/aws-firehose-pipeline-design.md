@@ -1,6 +1,6 @@
 # AWS Firehose 파이프라인 전환 설계
 
-상태: 1단계 설계와 2단계 Firehose 코드 준비를 반영한 검토안. AWS에는 적용하지 않았다.
+상태: 1·2단계는 커밋했고, 기존 Lambda 연결을 준비하는 4단계 인프라 코드를 추가했다. 3단계의 Lambda 소스 수정·이미지 준비는 사용자 측에서 별도로 진행한다. AWS에는 적용하지 않았다.
 
 ## 1. 목표와 작업 범위
 
@@ -57,7 +57,7 @@ Kinesis 암호화용 KMS 키는 사용처와 복구 필요성을 확인한 후 �
 
 다음 수치는 구현을 시작하기 위한 제안값이며, 이미 적용된 설정이 아니다.
 
-2단계 코드에는 아래 기본값과 서비스·CI Firehose를 추가한다. Lambda 권한·환경 변수, IoT Rule, S3 알림은 후속 단계에서 연결하므로 기존 유입 경로는 이 단계에서 바뀌지 않는다. AWS에는 아직 적용하지 않았다.
+2단계 코드에는 아래 기본값과 서비스·CI Firehose를 추가했다. 4단계에서는 기존 Lambda의 권한·환경 변수와 비동기 실패 설정 및 IoT 호출 권한을 준비한다. IoT Rule 대상과 S3 알림은 아직 변경하지 않으므로 기존 유입 경로를 유지한다. AWS에는 아직 적용하지 않았다.
 
 - 입력: Lambda가 직접 쓰는 Direct PUT. Firehose 내부에 추가 변환 Lambda를 연결하지 않는다.
 - 서비스 스트림 이름 제안: `${name_prefix}-processed-firehose`.
@@ -92,13 +92,13 @@ Terraform은 입력·출력 코드를 구현하지 않는다. 다음 기능을 �
 
 - IoT Rule이 전달하는 JSON 객체를 입력으로 처리한다. 현재 코드의 Kinesis `Records`·Base64 입력과 다르다.
 - 차량 식별은 인증된 디바이스의 MQTT 토픽에서 얻는 값이 기준이다. 본문에 같은 이름의 필드가 있을 때의 충돌 처리도 입력 계약에 포함한다.
-- `FIREHOSE_STREAM_NAME` 환경 변수로 대상 스트림을 받는다. 서비스 함수와 CI 함수에는 서로 다른 값을 넣는다. 이 변수명은 새 연동을 위한 제안이다.
+- `FIREHOSE_STREAM_NAME` 환경 변수로 대상 스트림을 받는다. 4단계 인프라 코드에서 서비스 함수와 CI 함수에 각자의 스트림 이름을 연결한다. 외부 이미지도 이 변수명을 사용해야 한다. 기존 `QUEUE_URL`, `PROCESSED_BUCKET`, `MAX_MESSAGE_BYTES`는 이전 경로 처리를 위해 유지한다.
 - 새 IoT 입력 경로에서는 전처리 결과를 Firehose에 보내며 S3나 수집 SQS에 직접 중복 전송하지 않는다.
 - Firehose 전송 실패를 정상 응답으로 삼키지 않는다. IoT 비동기 입력에서는 예외를 반환해야 Lambda의 함수 오류 재시도가 작동한다.
 - 전환 기간에는 기존 Kinesis 입력과 기존 환경 변수도 지원한다. 기존 적체를 처리할 수 있는 이미지를 준비한 뒤 트리거를 전환한다.
 - JSON 내부의 도메인 필드와 필드 선별 정책은 외부 저장소의 계약을 따른다. Java와 Python의 현재 출력 형식이 다르므로 어느 쪽이 실제 배포 이미지인지 확인하지 않고 새 스키마를 확정하지 않는다.
 
-단말 메시지를 다시 받아도 동일하게 유지되는 이벤트 식별자가 필요하다. 기존 `stream ARN + Kinesis event ID`는 새 IoT 입력에 없다. 사용할 원본 식별자와 `idempotencyKey` 계산 방식은 외부 Lambda·소비자와 맞추고 3단계에서 확정한다. 단말에 고유 식별자가 없다면 해시 방식의 중복 판정 범위와 서로 다른 이벤트를 합칠 위험을 함께 정한다. 매 호출 시 생성한 UUID나 Lambda 요청 ID를 재시도 중복 제거 키로 쓰지 않는다.
+단말 메시지를 다시 받아도 동일하게 유지되는 이벤트 식별자가 필요하다. 기존 `stream ARN + Kinesis event ID`는 새 IoT 입력에 없다. 사용할 원본 식별자와 `idempotencyKey` 계산 방식은 별도로 진행하는 Lambda·소비자 작업에서 맞춰야 하며, 인프라 코드만으로 확정하지 않는다. 단말에 고유 식별자가 없다면 해시 방식의 중복 판정 범위와 서로 다른 이벤트를 합칠 위험을 함께 정한다. 매 호출 시 생성한 UUID나 Lambda 요청 ID를 재시도 중복 제거 키로 쓰지 않는다.
 
 `PutRecord` 성공은 Firehose가 수신했다는 뜻이며 S3 저장 완료를 뜻하지 않는다. API 재전송은 중복 레코드를 만들 수 있으므로 객체 알림의 중복 제거와 별개로 레코드 단위 중복 방지가 필요하다. 배치 API를 선택하면 `FailedPutCount`와 개별 결과도 처리해야 한다. [PutRecord](https://docs.aws.amazon.com/firehose/latest/APIReference/API_PutRecord.html), [PutRecordBatch](https://docs.aws.amazon.com/firehose/latest/APIReference/API_PutRecordBatch.html)
 
@@ -128,9 +128,9 @@ S3 알림과 Standard SQS는 중복·순서 변경에 대비해야 한다. 객�
 - 공유 실행 역할을 유지하므로 서비스·CI 분리는 서로 다른 환경 변수와 스트림·버킷·큐에 의한 운영상 분리다. IAM으로 서로의 리소스 접근을 차단한 보안 격리는 아니다.
 - Firehose의 실행 역할은 Lambda 실행 역할과 별도로 두고 목적지 버킷·정상 및 오류 prefix·로그에 필요한 권한만 부여한다.
 
-2단계에서는 서비스·CI Firehose 각각의 역할에 해당 목적지 버킷의 조회·멀티파트 관리, 정상·오류 prefix의 객체 읽기·쓰기, 전용 로그 스트림의 `logs:PutLogEvents`만 허용한다. Lambda 실행 역할에는 아직 Firehose 권한을 추가하지 않았다. [Firehose S3 목적지 권한](https://docs.aws.amazon.com/firehose/latest/dev/controlling-access.html)
+2단계에서는 서비스·CI Firehose 각각의 역할에 해당 목적지 버킷의 조회·멀티파트 관리, 정상·오류 prefix의 객체 읽기·쓰기, 전용 로그 스트림의 `logs:PutLogEvents`만 허용했다. 4단계에서는 기존 공유 Lambda 실행 역할에 두 스트림의 `firehose:PutRecord`·`firehose:PutRecordBatch`를 추가하고, CI 실패 보관을 위해 CI 버킷 조회·쓰기 권한도 추가한다. [Firehose S3 목적지 권한](https://docs.aws.amazon.com/firehose/latest/dev/controlling-access.html)
 
-IoT의 Lambda 호출은 비동기다. 제안하는 함수 오류 재시도 횟수는 `2회`, 비동기 이벤트 최대 나이는 `21,600초(6시간)`다. 함수 오류 재시도 횟수를 스로틀링·서비스 오류에 대한 총 시도 횟수로 해석하지 않는다. Kinesis의 `batchItemFailures` 응답은 새 입력의 실패 신호로 사용할 수 없다. [IoT Lambda 호출](https://docs.aws.amazon.com/iot/latest/developerguide/lambda-rule-action.html), [비동기 오류 처리](https://docs.aws.amazon.com/lambda/latest/dg/invocation-async-error-handling.html)
+IoT의 Lambda 호출은 비동기다. 4단계 코드의 함수 오류 재시도 횟수는 `2회`, 비동기 이벤트 최대 나이는 `21,600초(6시간)`다. 함수 오류 재시도 횟수를 스로틀링·서비스 오류에 대한 총 시도 횟수로 해석하지 않는다. Kinesis의 `batchItemFailures` 응답은 새 입력의 실패 신호로 사용할 수 없다. [IoT Lambda 호출](https://docs.aws.amazon.com/iot/latest/developerguide/lambda-rule-action.html), [비동기 오류 처리](https://docs.aws.amazon.com/lambda/latest/dg/invocation-async-error-handling.html)
 
 서비스 함수의 비동기 최종 실패는 기존 raw 버킷에, CI 함수의 실패는 CI 버킷에 보관하는 안을 사용한다. Lambda가 정하는 `aws/lambda/async/` 경로는 수집 SQS 알림에서 제외한다. 실패 목적지 전달 자체가 실패하는 경우도 있으므로 `DestinationDeliveryFailures`를 관측한다. 기존 Kinesis 이벤트 소스 매핑의 실패 목적지와 새 비동기 호출 실패 목적지는 별도 설정이다. [비동기 실패 보관](https://docs.aws.amazon.com/lambda/latest/dg/invocation-async-retain-records.html)
 
@@ -142,7 +142,7 @@ Kinesis 제거 후에는 현재의 24시간 스트림 재읽기 기능이 없어
 
 1. 이 설계 문서만 추가한다. 미확정 사항은 사용자와 외부 코드 담당자가 결정한다.
 2. 기존 경로를 유지한 채 서비스·CI Firehose, 쓰기 역할, 로그, 출력값을 추가한다.
-3. 별도 Lambda 저장소에서 새 입력·출력 계약을 지원하는 이미지를 준비한다. 이 인프라 저장소에서 Lambda 소스를 수정하지 않는다.
+3. 사용자 측에서 별도 Lambda 저장소의 소스 수정·이미지 준비를 진행한다. 이 세션에서는 해당 작업 대신 다음 인프라 준비 단계로 진행한다. 새 입력·출력을 지원하는 이미지가 준비되기 전 실제 Rule 전환은 하지 않는다.
 4. 기존 Lambda의 권한·환경 변수·이미지 연결, CI 연동, IoT 호출 권한과 비동기 실패 설정을 준비한다. 실제 Rule 대상은 아직 바꾸지 않는다.
 5. S3 알림·SQS 정책과 소비자 연동을 준비한다. 서비스 알림 활성화는 소비자 준비 이후로 미룬다.
 6. 준비된 새 경로로 IoT Rule을 전환한다. 로그·알람을 새 경로에 맞추고 기존 적체의 처리 완료를 확인한다.
@@ -154,7 +154,7 @@ Kinesis 제거 후에는 현재의 24시간 스트림 재읽기 기능이 없어
 
 ## 8. 필요한 확인과 이번 단계의 한계
 
-1단계에서는 문서의 리소스 주소와 설정을 로컬 코드 및 AWS 공식 문서와 대조했다. 2단계에서는 추가한 Terraform의 `fmt -check`와 `validate`만 수행했다. 자동 테스트, Docker 빌드, AWS plan·apply, 실제 메시지 송신은 수행하지 않았다.
+1단계에서는 문서의 리소스 주소와 설정을 로컬 코드 및 AWS 공식 문서와 대조했다. 2단계와 4단계에서는 추가·수정한 Terraform의 `fmt -check`와 `validate`만 수행했다. 자동 테스트, Docker 빌드, AWS plan·apply, 실제 메시지 송신은 수행하지 않았다.
 
 설치된 provider 스키마 조회 중 원격 backend 인증 세션 만료를 확인했다. 실제 AWS 계획은 확인하지 않았으며, apply 전 AWS에 다시 로그인하고 최신 plan으로 변경 범위를 확인해야 한다. 로컬 문법·참조 검증의 통과를 AWS 전달 성공이나 삭제·교체 없음의 증거로 삼지 않는다.
 

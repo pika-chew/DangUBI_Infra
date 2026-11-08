@@ -11,7 +11,7 @@ resource "aws_iam_role" "preprocess" {
   })
 }
 
-# Both functions use this role and share its service and test resource permissions.
+# 서비스·CI 함수가 이 역할과 각 환경의 리소스 접근 권한을 공유합니다.
 resource "aws_iam_role_policy" "preprocess" {
   name = "${var.name_prefix}-preprocess"
   role = aws_iam_role.preprocess.id
@@ -39,6 +39,15 @@ resource "aws_iam_role_policy" "preprocess" {
             "kms:EncryptionContext:aws:kinesis:arn" = var.stream_arn
           }
         }
+      },
+      {
+        Sid    = "WriteProcessedRecordsToFirehose"
+        Effect = "Allow"
+        Action = ["firehose:PutRecord", "firehose:PutRecordBatch"]
+        Resource = [
+          aws_kinesis_firehose_delivery_stream.processed["service"].arn,
+          aws_kinesis_firehose_delivery_stream.processed["ci"].arn
+        ]
       },
       {
         Sid    = "SendToIngestionQueue"
@@ -77,7 +86,7 @@ resource "aws_iam_role_policy" "preprocess" {
         Sid       = "InspectFailureDestination"
         Effect    = "Allow"
         Action    = ["s3:ListBucket", "s3:GetBucketLocation"]
-        Resource  = var.failure_bucket_arn
+        Resource  = [var.failure_bucket_arn, aws_s3_bucket.processed_ci.arn]
         Condition = { StringEquals = { "s3:ResourceAccount" = var.aws_account_id } }
       },
       {
@@ -86,7 +95,10 @@ resource "aws_iam_role_policy" "preprocess" {
         Action = ["s3:PutObject"]
         # Lambda 실패 목적지의 공식 권한 예제에 맞춰 지정 버킷의 객체 범위를 허용합니다.
         # 실제 실패 이벤트 저장 경로는 Lambda가 aws/lambda/ 아래로 정합니다.
-        Resource  = "${var.failure_bucket_arn}/*"
+        Resource = [
+          "${var.failure_bucket_arn}/*",
+          "${aws_s3_bucket.processed_ci.arn}/*"
+        ]
         Condition = { StringEquals = { "s3:ResourceAccount" = var.aws_account_id } }
       }
     ]
