@@ -44,6 +44,6 @@ output "iot_rule_arn" {
 }
 
 output "iot_error_log_group_name" {
-  description = "IoT 규칙의 Kinesis 전달 오류 로그 그룹"
+  description = "IoT 규칙의 메시지 전달 오류 로그 그룹"
   value       = aws_cloudwatch_log_group.iot_errors.name
 }

@@ -160,7 +160,7 @@ output "iot_device_certificates" {
 }
 
 output "iot_rule_name" {
-  description = "IoT Core의 Kinesis 전달 규칙 이름"
+  description = "IoT Core의 메시지 전달 규칙 이름"
   value       = module.ingestion.iot_rule_name
 }
 

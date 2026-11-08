@@ -73,17 +73,13 @@ resource "aws_cloudwatch_log_group" "iot_errors" {
 
 resource "aws_iot_topic_rule" "telemetry" {
   name        = local.iot_rule_name
-  description = "Route authenticated vehicle JSON messages to Kinesis"
+  description = "Route authenticated vehicle JSON messages to Lambda"
   enabled     = var.rule_enabled
   sql         = "SELECT *, topic(4) AS vehicleId FROM '${var.topic_prefix}/+/telemetry'"
   sql_version = "2016-03-23"
 
-  kinesis {
-    stream_name = aws_kinesis_stream.telemetry.name
-    # IoT 치환식은 Terraform이 아니라 IoT 서비스가 평가합니다.
-    # ubi/dev/vehicles/vehicle-001/telemetry의 네 번째 요소가 차량 ID입니다.
-    partition_key = "$${topic(4)}"
-    role_arn      = aws_iam_role.iot_rule.arn
+  lambda {
+    function_arn = var.lambda_function_arn
   }
 
   error_action {

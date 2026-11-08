@@ -17,6 +17,8 @@ module "ingestion" {
   topic_prefix       = "${var.project_name}/${var.environment}/vehicles"
   log_retention_days = var.cloudwatch_log_retention_days
   rule_enabled       = var.iot_rule_enabled
+
+  lambda_function_arn = module.processing.function_arn
 }
 
 module "archive" {

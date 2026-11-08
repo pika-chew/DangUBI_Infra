@@ -16,6 +16,12 @@ output "function_name" {
 output "function_arn" {
   description = "전처리 Lambda ARN"
   value       = aws_lambda_function.preprocess.arn
+
+  # Rule이 이 ARN을 사용하기 전에 호출 권한과 비동기 실패 보관 설정을 준비합니다.
+  depends_on = [
+    aws_lambda_permission.iot,
+    aws_lambda_function_event_invoke_config.preprocess
+  ]
 }
 
 output "event_source_mapping_id" {

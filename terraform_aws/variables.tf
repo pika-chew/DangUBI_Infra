@@ -129,9 +129,15 @@ variable "iot_device_csr_paths" {
 }
 
 variable "iot_rule_enabled" {
-  description = "IoT Core → Kinesis Topic Rule 활성화 여부"
+  description = "기존 서비스 Lambda를 직접 호출하는 IoT Core Topic Rule 활성화 여부"
   type        = bool
   default     = true
+  nullable    = false
+
+  validation {
+    condition     = !var.iot_rule_enabled || var.s3_queue_notifications_enabled
+    error_message = "IoT Rule을 활성화하려면 서비스 S3→SQS 알림도 활성화해야 합니다. 준비만 할 때는 iot_rule_enabled=false로 두세요."
+  }
 }
 
 variable "firehose_buffering_size_mib" {

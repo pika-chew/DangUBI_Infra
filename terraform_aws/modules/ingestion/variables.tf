@@ -29,6 +29,20 @@ variable "log_retention_days" {
 }
 
 variable "rule_enabled" {
-  description = "차량 메시지의 Kinesis 전달 규칙 활성화 여부"
+  description = "서비스 Lambda를 직접 호출하는 차량 메시지 규칙 활성화 여부"
   type        = bool
+}
+
+variable "lambda_function_arn" {
+  description = "IoT Rule이 직접 호출할 기존 서비스 Lambda ARN"
+  type        = string
+  nullable    = false
+
+  validation {
+    condition = can(regex(
+      "^arn:[a-z-]+:lambda:${var.aws_region}:${var.aws_account_id}:function:[A-Za-z0-9_-]+(:[A-Za-z0-9_$-]+)?$",
+      var.lambda_function_arn
+    ))
+    error_message = "IoT Rule에는 동일 계정·리전의 Lambda 함수 ARN이 필요합니다."
+  }
 }
