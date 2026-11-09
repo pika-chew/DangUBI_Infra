@@ -1,0 +1,9 @@
+---
+# site.yml의 최종 검증이 끝난 클러스터에 실행합니다.
+# 초기 구축 플레이북을 다시 실행하지 않도록 분리했습니다.
+- name: Install Argo CD
+  hosts: kubernetes_control_plane[0]
+  become: true
+  any_errors_fatal: true
+  roles:
+    - kubernetes/argocd

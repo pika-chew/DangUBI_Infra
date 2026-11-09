@@ -182,6 +182,7 @@ roles/kubernetes/
 ├── ccm/            # OpenStack 노드 연동, hostNetwork로 CNI보다 먼저 시작
 ├── calico/         # Tigera Operator와 VXLAN Installation 구성
 ├── verify/         # 7대 Ready·cloud identity·Worker Pod 통신과 DNS 검사
+├── argocd/         # 구축 완료 후 별도 플레이북으로 Argo CD 설치
 └── tests/          # VM에 접속하지 않는 로컬 검증
 ```
 
@@ -374,8 +375,8 @@ Calico/CCM 설치 도중에는 NotReady·미초기화 taint가 나타날 수 있
 Ansible은 VM의 OS·containerd·kubeadm/kubelet과 클러스터 init/join, Calico·CCM과 네트워크 검증을 구성합니다.
 클러스터 위의 애플리케이션 매니페스트는 별도 레포에서 관리합니다.
 
-이 플레이북의 최종 검증이 끝난 뒤 Argo CD를 최초 설치하고,
-별도 레포의 Application을 등록해 서비스들을 동기화합니다. Argo CD 설치는 현재 role에 포함되지 않습니다.
+이 플레이북의 최종 검증이 끝난 뒤 `playbooks/kubernetes/argocd.yml`로 Argo CD를 최초 설치하고,
+별도 레포의 Application을 등록해 서비스들을 동기화합니다. Application 등록은 현재 role에 포함되지 않습니다.
 Cinder CSI·MetalLB 등의 후속 플랫폼 구성도 의존 순서에 맞춰 Argo CD로 관리할 수 있습니다.
 Calico·CCM은 현재 Ansible이 관리하므로 같은 리소스를 Argo CD에서 동시에 관리하지 않습니다.
 
@@ -383,6 +384,36 @@ Argo CD는 일반 YAML뿐 아니라 Helm chart와 Kustomize 구성을 사용할 
 대안으로 직접 `kubectl apply`, Helm CLI, Jenkins 파이프라인을 통한 배포도 가능합니다.
 같은 리소스를 Argo CD와 별도 배포 작업이 동시에 관리하지 않도록 담당을 구분합니다.
 서비스 최초 배포와 별도로 DB 복제 그룹 초기화·백업·복구 설정도 필요합니다.
+
+### Argo CD 설치
+
+`roles/kubernetes/argocd`가 버전을 고정한 공식 `install.yaml`(비 HA)을 `argocd` Namespace에 server-side apply하고,
+Workload 7개의 rollout을 확인합니다. 버전은 `inventory/group_vars/kubernetes/vars.yml`의 `kubernetes_argocd_version`에 있습니다.
+공식 매니페스트의 ClusterRoleBinding이 `argocd` Namespace를 고정 참조하므로 Namespace 이름은 바꾸지 않습니다.
+
+```bash
+ansible-playbook playbooks/kubernetes/argocd.yml --syntax-check --ask-vault-pass
+ansible-playbook playbooks/kubernetes/argocd.yml --ask-vault-pass
+```
+
+- 실행 대상: 첫 CP(`k8s-control-1`). CCM 자격 증명 환경변수는 필요 없습니다.
+- 재실행해도 매니페스트 차이가 없으면 적용을 생략합니다.
+- CP의 GitHub 원본 다운로드와 노드의 `quay.io`·`ghcr.io`·`public.ecr.aws` 이미지 다운로드가 가능해야 합니다.
+- Service는 ClusterIP입니다. MetalLB·Ingress 구성 전까지는 포트 포워딩으로 접속합니다.
+
+```bash
+# k8s-control-1에서: 초기 admin 비밀번호 확인과 포트 포워딩
+sudo kubectl --kubeconfig /etc/kubernetes/admin.conf -n argocd get secret argocd-initial-admin-secret -o jsonpath='{.data.password}' | base64 -d; echo
+sudo kubectl --kubeconfig /etc/kubernetes/admin.conf -n argocd port-forward svc/argocd-server 8443:443
+
+# 접속할 PC에서 터널을 연 뒤 https://localhost:8443 접속 (자체 서명 인증서)
+ssh -L 8443:127.0.0.1:8443 ubuntu@10.20.0.111
+```
+
+로그인 후 admin 비밀번호를 변경하고 `argocd-initial-admin-secret`을 삭제합니다.
+
+참고: [Argo CD 시작하기](https://argo-cd.readthedocs.io/en/stable/getting_started/),
+[테스트된 Kubernetes 버전](https://argo-cd.readthedocs.io/en/stable/operator-manual/tested-kubernetes-versions/).
 
 ### OpenStack CCM과 Query Service
 
