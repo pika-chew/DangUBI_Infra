@@ -24,9 +24,9 @@ bucket_status() {
     aws s3api head-bucket --bucket "$1" > /dev/null 2>&1 && echo OK || echo "접근 불가"
 }
 
-check "Kinesis 스트림 상태" \
-    "$(aws kinesis describe-stream-summary --stream-name "$KINESIS_STREAM_NAME" \
-        --query StreamDescriptionSummary.StreamStatus --output text 2>&1)" \
+check "Firehose 상태" \
+    "$(aws firehose describe-delivery-stream --delivery-stream-name "$FIREHOSE_STREAM_NAME" \
+        --query DeliveryStreamDescription.DeliveryStreamStatus --output text 2>&1)" \
     "ACTIVE"
 
 check "Lambda 상태" \
@@ -38,12 +38,6 @@ check "Lambda 마지막 업데이트" \
     "$(aws lambda get-function-configuration --function-name "$PROCESSING_FUNCTION_NAME" \
         --query LastUpdateStatus --output text 2>&1)" \
     "Successful"
-
-# processing_consumer_enabled 값에 따라 Disabled도 정상입니다.
-check "Kinesis → Lambda 연결" \
-    "$(aws lambda get-event-source-mapping --uuid "$EVENT_SOURCE_MAPPING_ID" \
-        --query State --output text 2>&1)" \
-    "Enabled|Disabled"
 
 check "IoT 규칙" \
     "$(aws iot get-topic-rule --rule-name "$IOT_RULE_NAME" \
@@ -59,6 +53,14 @@ check "SQS DLQ" \
     "$(aws sqs get-queue-attributes --queue-url "$INGESTION_DLQ_URL" \
         --attribute-names QueueArn --query Attributes.QueueArn --output text 2>&1)" \
     "arn:aws:sqs:.*"
+
+# s3_queue_notifications_enabled가 false면 알림을 만들지 않으므로 확인하지 않습니다.
+if [ "$S3_QUEUE_NOTIFICATIONS_ENABLED" = "true" ]; then
+    check "S3 → SQS 알림" \
+        "$(aws s3api get-bucket-notification-configuration --bucket "$PROCESSED_BUCKET_NAME" \
+            --query "QueueConfigurations[?QueueArn=='$INGESTION_QUEUE_ARN'].QueueArn | [0]" --output text 2>&1)" \
+        "$INGESTION_QUEUE_ARN"
+fi
 
 check "S3 raw 버킷" "$(bucket_status "$RAW_BUCKET_NAME")" "OK"
 check "S3 processed 버킷" "$(bucket_status "$PROCESSED_BUCKET_NAME")" "OK"
