@@ -101,9 +101,9 @@ variable "iot_device_csr_paths" {
 }
 
 variable "iot_rule_enabled" {
-  description = "서비스 Lambda를 호출하는 IoT Rule 활성화 여부. 리소스 배치 단계에서는 비활성"
+  description = "차량 메시지를 서비스 Lambda로 전달하는 IoT Rule 활성화 여부"
   type        = bool
-  default     = false
+  default     = true
   nullable    = false
 
   validation {
@@ -136,13 +136,6 @@ variable "firehose_buffering_interval_seconds" {
 
 variable "s3_queue_notifications_enabled" {
   description = "서비스 가공 S3의 SQS 알림 리소스 생성 여부"
-  type        = bool
-  default     = true
-  nullable    = false
-}
-
-variable "ci_s3_queue_notifications_enabled" {
-  description = "CI 가공 S3의 SQS 알림 리소스 생성 여부"
   type        = bool
   default     = true
   nullable    = false

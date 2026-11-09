@@ -1,8 +1,3 @@
-output "stream_kms_key_arn" {
-  description = "삭제를 보류한 기존 Kinesis 암호화 키 ARN"
-  value       = aws_kms_key.telemetry.arn
-}
-
 output "iot_device_connections" {
   description = "차량별 MQTT 접속 정보. 개인키 및 인증서 PEM은 포함하지 않습니다."
   value = {

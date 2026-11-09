@@ -51,10 +51,3 @@ variable "s3_queue_notifications_enabled" {
   default     = false
   nullable    = false
 }
-
-variable "ci_s3_queue_notifications_enabled" {
-  description = "CI 가공 S3의 SQS 알림 리소스 생성 여부. 루트에서 명시적으로 전달"
-  type        = bool
-  default     = false
-  nullable    = false
-}

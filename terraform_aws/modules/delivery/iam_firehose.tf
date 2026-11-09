@@ -26,7 +26,7 @@ resource "aws_iam_role_policy" "firehose" {
         Sid      = "InspectDestinationBucket"
         Effect   = "Allow"
         Action   = ["s3:GetBucketLocation", "s3:ListBucket", "s3:ListBucketMultipartUploads"]
-        Resource = each.value.bucket_arn
+        Resource = aws_s3_bucket.processed.arn
       },
       {
         Sid    = "DeliverProcessedRecords"
@@ -35,8 +35,8 @@ resource "aws_iam_role_policy" "firehose" {
           "s3:GetObject", "s3:PutObject", "s3:AbortMultipartUpload", "s3:ListMultipartUploadParts"
         ]
         Resource = [
-          "${each.value.bucket_arn}/firehose/processed/*",
-          "${each.value.bucket_arn}/firehose-errors/*"
+          "${aws_s3_bucket.processed.arn}/${each.value.data_prefix}*",
+          "${aws_s3_bucket.processed.arn}/${each.value.errors_prefix}*"
         ]
       },
       {

@@ -36,9 +36,8 @@ variable "iot_rule_arn" {
 }
 
 variable "delivery_destinations" {
-  description = "delivery 모듈에서 전달하는 서비스·CI Firehose와 비동기 실패 보관 버킷"
+  description = "delivery 모듈에서 전달하는 서비스·CI Firehose"
   type = map(object({
-    bucket_arn    = string
     firehose_name = string
     firehose_arn  = string
   }))

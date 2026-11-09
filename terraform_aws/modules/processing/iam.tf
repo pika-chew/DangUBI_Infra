@@ -46,7 +46,7 @@ resource "aws_iam_role_policy" "preprocess" {
         Sid       = "InspectFailureDestination"
         Effect    = "Allow"
         Action    = ["s3:ListBucket", "s3:GetBucketLocation"]
-        Resource  = [var.failure_bucket_arn, var.delivery_destinations["ci"].bucket_arn]
+        Resource  = var.failure_bucket_arn
         Condition = { StringEquals = { "s3:ResourceAccount" = var.aws_account_id } }
       },
       {
@@ -55,10 +55,7 @@ resource "aws_iam_role_policy" "preprocess" {
         Action = ["s3:PutObject"]
         # Lambda 실패 목적지의 공식 권한 예제에 맞춰 지정 버킷의 객체 범위를 허용합니다.
         # 실제 실패 이벤트 저장 경로는 Lambda가 aws/lambda/ 아래로 정합니다.
-        Resource = [
-          "${var.failure_bucket_arn}/*",
-          "${var.delivery_destinations["ci"].bucket_arn}/*"
-        ]
+        Resource  = "${var.failure_bucket_arn}/*"
         Condition = { StringEquals = { "s3:ResourceAccount" = var.aws_account_id } }
       }
     ]

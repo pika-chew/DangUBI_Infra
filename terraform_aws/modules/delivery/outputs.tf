@@ -33,21 +33,6 @@ output "dlq_url" {
   value       = aws_sqs_queue.ingestion_dlq.url
 }
 
-output "ci_queue_url" {
-  description = "CI 결과 확인용 테스트 SQS URL"
-  value       = aws_sqs_queue.ingestion_ci.url
-}
-
-output "ci_queue_arn" {
-  description = "Jenkins의 테스트 SQS 조회 권한을 제한할 ARN"
-  value       = aws_sqs_queue.ingestion_ci.arn
-}
-
-output "ci_processed_bucket_name" {
-  description = "CI 결과 확인용 테스트 S3 버킷 이름"
-  value       = aws_s3_bucket.processed_ci.id
-}
-
 output "firehose_stream_name" {
   description = "서비스 Lambda가 가공 결과를 전달할 Firehose 이름"
   value       = aws_kinesis_firehose_delivery_stream.processed["service"].name
@@ -82,12 +67,10 @@ output "lambda_destinations" {
   description = "processing 모듈이 Lambda 환경 변수와 실행 권한에 사용할 서비스·CI 대상"
   value = {
     service = {
-      bucket_arn    = aws_s3_bucket.processed.arn
       firehose_name = aws_kinesis_firehose_delivery_stream.processed["service"].name
       firehose_arn  = aws_kinesis_firehose_delivery_stream.processed["service"].arn
     }
     ci = {
-      bucket_arn    = aws_s3_bucket.processed_ci.arn
       firehose_name = aws_kinesis_firehose_delivery_stream.processed["ci"].name
       firehose_arn  = aws_kinesis_firehose_delivery_stream.processed["ci"].arn
     }
@@ -98,17 +81,13 @@ output "lambda_destinations" {
     aws_s3_bucket_public_access_block.processed,
     aws_s3_bucket_server_side_encryption_configuration.processed,
     aws_s3_bucket_versioning.processed,
-    aws_s3_bucket_policy.processed_https_only,
-    aws_s3_bucket_public_access_block.processed_ci,
-    aws_s3_bucket_server_side_encryption_configuration.processed_ci,
-    aws_s3_bucket_policy.processed_ci_https_only
+    aws_s3_bucket_policy.processed_https_only
   ]
 }
 
 output "s3_queue_notifications_enabled" {
-  description = "Terraform에서 관리하는 서비스·CI S3 알림의 생성 여부"
+  description = "Terraform에서 관리하는 서비스 S3 알림의 생성 여부"
   value = {
     service = contains(keys(aws_s3_bucket_notification.processed), "service")
-    ci      = contains(keys(aws_s3_bucket_notification.processed), "ci")
   }
 }

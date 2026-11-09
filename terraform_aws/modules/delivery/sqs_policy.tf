@@ -1,4 +1,4 @@
-# 알림 활성화와 별개로 수신 권한을 준비하며, 각 큐에 대응하는 버킷만 허용합니다.
+# 알림 활성화와 별개로 기존 가공 버킷의 전송 권한을 준비합니다.
 resource "aws_sqs_queue_policy" "s3_notifications" {
   for_each = local.s3_notification_destinations
 

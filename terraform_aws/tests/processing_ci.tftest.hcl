@@ -17,8 +17,6 @@ mock_provider "aws" {
       arn = "arn:aws:logs:ap-northeast-2:123456789012:log-group:/aws/lambda/mock-processing"
     }
   }
-
-
 }
 
 mock_provider "time" {}
@@ -39,12 +37,10 @@ variables {
   log_retention_days = 7
   delivery_destinations = {
     service = {
-      bucket_arn    = "arn:aws:s3:::ubi-dev-processed-123456789012-ap-northeast-2"
       firehose_name = "ubi-dev-processed-firehose"
       firehose_arn  = "arn:aws:firehose:ap-northeast-2:123456789012:deliverystream/ubi-dev-processed-firehose"
     }
     ci = {
-      bucket_arn    = "arn:aws:s3:::ubi-dev-processed-ci-123456789012-ap-northeast-2"
       firehose_name = "ubi-dev-processed-ci-firehose"
       firehose_arn  = "arn:aws:firehose:ap-northeast-2:123456789012:deliverystream/ubi-dev-processed-ci-firehose"
     }

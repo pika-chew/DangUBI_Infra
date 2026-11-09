@@ -40,7 +40,6 @@ module "delivery" {
   firehose_buffering_size_mib         = var.firehose_buffering_size_mib
   firehose_buffering_interval_seconds = var.firehose_buffering_interval_seconds
   s3_queue_notifications_enabled      = var.s3_queue_notifications_enabled
-  ci_s3_queue_notifications_enabled   = var.ci_s3_queue_notifications_enabled
 }
 
 module "processing" {

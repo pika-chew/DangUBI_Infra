@@ -26,31 +26,6 @@ moved {
 }
 
 moved {
-  from = module.processing.aws_s3_bucket.processed_ci
-  to   = module.delivery.aws_s3_bucket.processed_ci
-}
-
-moved {
-  from = module.processing.aws_s3_bucket_public_access_block.processed_ci
-  to   = module.delivery.aws_s3_bucket_public_access_block.processed_ci
-}
-
-moved {
-  from = module.processing.aws_s3_bucket_server_side_encryption_configuration.processed_ci
-  to   = module.delivery.aws_s3_bucket_server_side_encryption_configuration.processed_ci
-}
-
-moved {
-  from = module.processing.aws_s3_bucket_policy.processed_ci_https_only
-  to   = module.delivery.aws_s3_bucket_policy.processed_ci_https_only
-}
-
-moved {
-  from = module.processing.aws_s3_bucket_lifecycle_configuration.processed_ci
-  to   = module.delivery.aws_s3_bucket_lifecycle_configuration.processed_ci
-}
-
-moved {
   from = module.processing.aws_sqs_queue.ingestion_dlq
   to   = module.delivery.aws_sqs_queue.ingestion_dlq
 }
@@ -63,11 +38,6 @@ moved {
 moved {
   from = module.processing.aws_sqs_queue_redrive_allow_policy.ingestion_dlq
   to   = module.delivery.aws_sqs_queue_redrive_allow_policy.ingestion_dlq
-}
-
-moved {
-  from = module.processing.aws_sqs_queue.ingestion_ci
-  to   = module.delivery.aws_sqs_queue.ingestion_ci
 }
 
 moved {

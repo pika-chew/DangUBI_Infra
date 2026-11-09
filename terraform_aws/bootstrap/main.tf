@@ -61,3 +61,21 @@ resource "aws_s3_bucket_policy" "state_https_only" {
     }]
   })
 }
+
+# 현재 state와 잠금 객체를 보존하고 이전 버전만 정리합니다.
+resource "aws_s3_bucket_lifecycle_configuration" "state" {
+  bucket = aws_s3_bucket.state.id
+
+  rule {
+    id     = "expire-previous-state-versions"
+    status = "Enabled"
+
+    filter {}
+
+    noncurrent_version_expiration {
+      noncurrent_days = 30
+    }
+  }
+
+  depends_on = [aws_s3_bucket_versioning.state]
+}

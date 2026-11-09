@@ -18,11 +18,6 @@ output "raw_bucket_name" {
   value       = module.archive.bucket_name
 }
 
-output "kinesis_kms_key_arn" {
-  description = "삭제를 보류한 기존 Kinesis 암호화 키 ARN"
-  value       = module.ingestion.stream_kms_key_arn
-}
-
 output "cloudwatch_dashboard_name" {
   description = "파이프라인 CloudWatch 대시보드 이름"
   value       = module.monitoring.dashboard_name
@@ -73,21 +68,6 @@ output "processing_ci_log_group" {
   value       = module.processing.ci_function_log_group_name
 }
 
-output "processing_ci_queue_url" {
-  description = "Jenkins 검증 결과 확인용 SQS URL"
-  value       = module.delivery.ci_queue_url
-}
-
-output "processing_ci_queue_arn" {
-  description = "Jenkins 검증 결과 확인용 SQS ARN"
-  value       = module.delivery.ci_queue_arn
-}
-
-output "processing_ci_processed_bucket_name" {
-  description = "Jenkins 검증 결과 확인용 S3 버킷 이름"
-  value       = module.delivery.ci_processed_bucket_name
-}
-
 output "processing_firehose_stream_name" {
   description = "서비스 Lambda용 Firehose 이름"
   value       = module.delivery.firehose_stream_name
@@ -119,7 +99,7 @@ output "processing_ci_firehose_log_group" {
 }
 
 output "s3_queue_notifications_enabled" {
-  description = "Terraform에서 관리하는 서비스·CI S3 알림의 생성 여부"
+  description = "Terraform에서 관리하는 서비스 S3 알림의 생성 여부"
   value       = module.delivery.s3_queue_notifications_enabled
 }
 

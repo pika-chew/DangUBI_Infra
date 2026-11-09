@@ -7,17 +7,10 @@ locals {
       queue_arn  = aws_sqs_queue.ingestion.arn
       enabled    = var.s3_queue_notifications_enabled
     }
-    ci = {
-      bucket_id  = aws_s3_bucket.processed_ci.id
-      bucket_arn = aws_s3_bucket.processed_ci.arn
-      queue_url  = aws_sqs_queue.ingestion_ci.url
-      queue_arn  = aws_sqs_queue.ingestion_ci.arn
-      enabled    = var.ci_s3_queue_notifications_enabled
-    }
   }
 }
 
-# 루트 설정에 따라 서비스·CI 알림을 생성합니다. 소비자 동작 확인과는 별개입니다.
+# 서비스 가공 경로만 알립니다. 같은 버킷의 CI 결과는 다른 prefix에 저장합니다.
 # 버킷의 다른 알림이 있다면 활성화 전에 이 리소스의 설정에 함께 반영해야 합니다.
 resource "aws_s3_bucket_notification" "processed" {
   for_each = {
@@ -31,7 +24,7 @@ resource "aws_s3_bucket_notification" "processed" {
     id            = "${each.key}-firehose-processed-objects"
     queue_arn     = each.value.queue_arn
     events        = ["s3:ObjectCreated:*"]
-    filter_prefix = "firehose/processed/"
+    filter_prefix = local.firehose_destinations.service.data_prefix
   }
 
   depends_on = [aws_sqs_queue_policy.s3_notifications]
