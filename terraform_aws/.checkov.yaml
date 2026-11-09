@@ -13,11 +13,13 @@ skip-check:
   - CKV2_AWS_62  # S3 event notifications
   - CKV_AWS_338  # CloudWatch log 1년 보관 (cloudwatch_log_retention_days로 관리)
   - CKV_AWS_50   # Lambda X-Ray tracing
+  - CKV_AWS_115  # Lambda 동시 실행 제한 (값을 잘못 잡으면 IoT 메시지 처리가 밀려 dev에서는 두지 않음)
   # 고객 관리형 KMS 대신 AWS 관리형 암호화(SSE-S3, AES256 등)를 사용
   - CKV_AWS_145  # S3 KMS 기본 암호화
   - CKV_AWS_136  # ECR KMS 암호화
   - CKV_AWS_158  # CloudWatch Log Group KMS 암호화
   - CKV_AWS_173  # Lambda 환경 변수 KMS 암호화 (시크릿을 환경 변수에 두지 않음)
+  - CKV_AWS_241  # Firehose KMS 암호화
   # 아키텍처상 해당 없음
   - CKV_AWS_117  # Lambda VPC 배치 (VPC 리소스에 접근하지 않음)
   - CKV_AWS_116  # Lambda DLQ (Kinesis 이벤트 소스는 on_failure destination으로 처리)

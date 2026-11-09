@@ -357,11 +357,12 @@ pipeline {
                         dir(TF_DIR) {
                             sh '''
                                 {
-                                    echo "KINESIS_STREAM_NAME=$(terraform output -raw kinesis_stream_name)"
+                                    echo "FIREHOSE_STREAM_NAME=$(terraform output -raw processing_firehose_stream_name)"
                                     echo "PROCESSING_FUNCTION_NAME=$(terraform output -raw processing_function_name)"
-                                    echo "EVENT_SOURCE_MAPPING_ID=$(terraform output -raw processing_event_source_mapping_id)"
                                     echo "IOT_RULE_NAME=$(terraform output -raw iot_rule_name)"
                                     echo "INGESTION_QUEUE_URL=$(terraform output -raw ingestion_queue_url)"
+                                    echo "INGESTION_QUEUE_ARN=$(terraform output -raw ingestion_queue_arn)"
+                                    echo "S3_QUEUE_NOTIFICATIONS_ENABLED=$(terraform output -raw s3_queue_notifications_enabled)"
                                     echo "INGESTION_DLQ_URL=$(terraform output -raw ingestion_dlq_url)"
                                     echo "RAW_BUCKET_NAME=$(terraform output -raw raw_bucket_name)"
                                     echo "PROCESSED_BUCKET_NAME=$(terraform output -raw processed_bucket_name)"

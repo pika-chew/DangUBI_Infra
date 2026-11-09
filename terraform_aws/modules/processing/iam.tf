@@ -11,7 +11,7 @@ resource "aws_iam_role" "preprocess" {
   })
 }
 
-# Both functions use this role and share its service and test resource permissions.
+# 서비스·CI 함수가 이 역할과 각 환경의 리소스 접근 권한을 공유합니다.
 resource "aws_iam_role_policy" "preprocess" {
   name = "${var.name_prefix}-preprocess"
   role = aws_iam_role.preprocess.id
@@ -20,44 +20,13 @@ resource "aws_iam_role_policy" "preprocess" {
     Version = "2012-10-17"
     Statement = [
       {
-        Sid    = "ReadSourceStream"
+        Sid    = "WriteProcessedRecordsToFirehose"
         Effect = "Allow"
-        Action = [
-          "kinesis:DescribeStream", "kinesis:DescribeStreamSummary",
-          "kinesis:GetRecords", "kinesis:GetShardIterator", "kinesis:ListShards"
-        ]
-        Resource = var.stream_arn
-      },
-      {
-        Sid      = "DecryptSourceRecords"
-        Effect   = "Allow"
-        Action   = ["kms:Decrypt"]
-        Resource = var.stream_kms_key_arn
-        Condition = {
-          StringEquals = {
-            "kms:ViaService"                        = "kinesis.${var.aws_region}.amazonaws.com"
-            "kms:EncryptionContext:aws:kinesis:arn" = var.stream_arn
-          }
-        }
-      },
-      {
-        Sid    = "SendToIngestionQueue"
-        Effect = "Allow"
-        Action = ["sqs:SendMessage"] # SendMessageBatch에도 동일한 IAM 작업을 사용합니다.
+        Action = ["firehose:PutRecord", "firehose:PutRecordBatch"]
         Resource = [
-          aws_sqs_queue.ingestion.arn,
-          aws_sqs_queue.ingestion_ci.arn
+          var.delivery_destinations["service"].firehose_arn,
+          var.delivery_destinations["ci"].firehose_arn
         ]
-      },
-      {
-        Sid    = "ArchiveProcessedMessages"
-        Effect = "Allow"
-        Action = ["s3:PutObject"]
-        Resource = [
-          "${aws_s3_bucket.processed.arn}/processed/*",
-          "${aws_s3_bucket.processed_ci.arn}/processed/*"
-        ]
-        Condition = { StringEquals = { "s3:ResourceAccount" = var.aws_account_id } }
       },
       {
         Sid    = "WriteFunctionLogs"

@@ -1,51 +1,54 @@
 locals {
-  # 전달 알람은 세 dimension을 모두 지정해야 실제 전달 지표와 일치합니다.
-  delivery_dimensions = {
-    ChannelName = var.channel_name
-    ChannelId   = var.channel_id
-    StreamName  = var.stream_name
-  }
-
   alarms = {
-    kinesis_write_throttled = {
-      description = "Kinesis 쓰기 제한 발생. 생산자의 재시도 및 스트림 처리량을 확인하세요."
-      namespace   = "AWS/Kinesis"
-      metric_name = "WriteProvisionedThroughputExceeded"
+    firehose_write_throttled = {
+      description = "Firehose 쓰기 제한 발생. Lambda 재시도와 스트림 수신 처리량을 확인하세요."
+      namespace   = "AWS/Firehose"
+      metric_name = "ThrottledRecords"
       statistic   = "Sum"
       period      = 60
       evaluations = 1
       threshold   = 0
-      dimensions  = { StreamName = var.stream_name }
+      dimensions  = { DeliveryStreamName = var.firehose_stream_name }
     }
-    kinesis_read_throttled = {
-      description = "Kinesis 읽기 제한 발생. 소비자의 읽기 처리량을 확인하세요."
-      namespace   = "AWS/Kinesis"
-      metric_name = "ReadProvisionedThroughputExceeded"
+    firehose_delivery_errors = {
+      description = "Firehose 전달 오류 로그가 기록됐습니다. S3 접근 권한과 전달 로그를 확인하세요."
+      namespace   = "UBI/${var.name_prefix}"
+      metric_name = "FirehoseDeliveryErrorLogs"
       statistic   = "Sum"
       period      = 60
       evaluations = 1
       threshold   = 0
-      dimensions  = { StreamName = var.stream_name }
+      dimensions  = {}
     }
-    archive_delivery_failed = {
-      description = "S3 직접 전달 실패. 전달 로그와 S3 delivery-errors/를 확인하세요."
-      namespace   = "AWS/Kinesis"
-      metric_name = "DeliveryToS3.FailedRecordCount"
-      statistic   = "Sum"
-      period      = 300
-      evaluations = 1
-      threshold   = 0
-      dimensions  = local.delivery_dimensions
-    }
-    archive_delivery_delayed = {
-      description = "S3 전달 데이터 지연이 목표의 두 배를 넘었습니다."
-      namespace   = "AWS/Kinesis"
+    firehose_delivery_delayed = {
+      description = "Firehose의 S3 미전달 데이터가 지연되고 있습니다. 전달 로그와 S3 상태를 확인하세요."
+      namespace   = "AWS/Firehose"
       metric_name = "DeliveryToS3.DataFreshness"
       statistic   = "Maximum"
-      period      = 300
-      evaluations = 2
-      threshold   = var.delivery_freshness_seconds * 2
-      dimensions  = local.delivery_dimensions
+      period      = 60
+      evaluations = 3
+      threshold   = var.firehose_freshness_threshold_seconds
+      dimensions  = { DeliveryStreamName = var.firehose_stream_name }
+    }
+    processing_async_old = {
+      description = "Lambda 비동기 이벤트 대기가 5분을 넘었습니다. 함수 오류와 호출 제한을 확인하세요."
+      namespace   = "AWS/Lambda"
+      metric_name = "AsyncEventAge"
+      statistic   = "Maximum"
+      period      = 60
+      evaluations = 3
+      threshold   = 300000 # 밀리초, 5분
+      dimensions  = { FunctionName = var.processing_function_name }
+    }
+    processing_async_dropped = {
+      description = "Lambda 비동기 이벤트가 만료되거나 재시도를 소진했습니다. 실패 보관 S3를 확인하세요."
+      namespace   = "AWS/Lambda"
+      metric_name = "AsyncEventsDropped"
+      statistic   = "Sum"
+      period      = 60
+      evaluations = 1
+      threshold   = 0
+      dimensions  = { FunctionName = var.processing_function_name }
     }
     ingestion_queue_old = {
       description = "SQS에 오래 대기하는 메시지가 있습니다. 프라이빗 수집 워커를 확인하세요."
@@ -87,18 +90,8 @@ locals {
       threshold   = 0
       dimensions  = { FunctionName = var.processing_function_name }
     }
-    processing_iterator_old = {
-      description = "처리 Lambda의 Kinesis 읽기가 60초 이상 지연되고 있습니다."
-      namespace   = "AWS/Lambda"
-      metric_name = "IteratorAge"
-      statistic   = "Maximum"
-      period      = 60
-      evaluations = 3
-      threshold   = 60000 # 밀리초
-      dimensions  = { FunctionName = var.processing_function_name }
-    }
     processing_record_failures = {
-      description = "JSON 검증, 가공 S3 저장 또는 SQS 전송 실패. 재시도 및 실패 보관 이벤트를 확인하세요."
+      description = "전처리 로그에 레코드 실패가 기록됐습니다. 함수 로그와 실패 보관 이벤트를 확인하세요."
       namespace   = "UBI/${var.name_prefix}"
       metric_name = "ProcessingFailedRecords"
       statistic   = "Sum"
@@ -128,7 +121,7 @@ locals {
       dimensions  = { RuleName = var.iot_rule_name }
     }
     iot_rule_errors = {
-      description = "IoT → Kinesis 전달 오류가 기록됐습니다. IoT 규칙 오류 로그를 확인하세요."
+      description = "IoT → Lambda 호출 전달 오류가 기록됐습니다. IoT 규칙 오류 로그를 확인하세요."
       namespace   = "UBI/${var.name_prefix}"
       metric_name = "IotRuleErrors"
       statistic   = "Sum"

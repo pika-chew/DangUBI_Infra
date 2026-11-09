@@ -59,17 +59,6 @@ variable "sqs_visibility_timeout_seconds" {
   }
 }
 
-variable "archive_delivery_freshness_seconds" {
-  description = "S3 직접 전달의 목표 최대 버퍼링 시간(초). 지원 범위는 5~15분"
-  type        = number
-  default     = 300
-
-  validation {
-    condition     = var.archive_delivery_freshness_seconds >= 300 && var.archive_delivery_freshness_seconds <= 900 && floor(var.archive_delivery_freshness_seconds) == var.archive_delivery_freshness_seconds
-    error_message = "S3 전달 freshness는 300~900초 사이의 정수여야 합니다."
-  }
-}
-
 variable "cloudwatch_log_retention_days" {
   description = "S3 전달·Lambda·IoT 규칙 오류 로그 보관 기간(일)"
   type        = number
@@ -79,23 +68,6 @@ variable "cloudwatch_log_retention_days" {
     condition     = contains([7, 14, 30, 60, 90], var.cloudwatch_log_retention_days)
     error_message = "로그 보관 기간은 7, 14, 30, 60, 90일 중 하나여야 합니다."
   }
-}
-
-variable "processing_batch_size" {
-  description = "Kinesis → Lambda 한 번 호출 시 최대 레코드 수"
-  type        = number
-  default     = 100
-
-  validation {
-    condition     = var.processing_batch_size >= 1 && var.processing_batch_size <= 10000 && floor(var.processing_batch_size) == var.processing_batch_size
-    error_message = "Lambda Kinesis 배치 크기는 1~10000 사이의 정수여야 합니다."
-  }
-}
-
-variable "processing_consumer_enabled" {
-  description = "Kinesis → Lambda 소비 활성화. false로 변경하면 폴링을 중지"
-  type        = bool
-  default     = true
 }
 
 variable "sqs_age_alarm_threshold_seconds" {
@@ -129,7 +101,42 @@ variable "iot_device_csr_paths" {
 }
 
 variable "iot_rule_enabled" {
-  description = "IoT Core → Kinesis Topic Rule 활성화 여부"
+  description = "차량 메시지를 서비스 Lambda로 전달하는 IoT Rule 활성화 여부"
   type        = bool
   default     = true
+  nullable    = false
+
+  validation {
+    condition     = !var.iot_rule_enabled || var.s3_queue_notifications_enabled
+    error_message = "IoT Rule을 활성화하려면 서비스 S3→SQS 알림도 활성화해야 합니다. 준비만 할 때는 iot_rule_enabled=false로 두세요."
+  }
+}
+
+variable "firehose_buffering_size_mib" {
+  description = "서비스·CI Firehose의 S3 전달 버퍼 크기 힌트(MiB)"
+  type        = number
+  default     = 5
+
+  validation {
+    condition     = var.firehose_buffering_size_mib >= 1 && var.firehose_buffering_size_mib <= 128 && floor(var.firehose_buffering_size_mib) == var.firehose_buffering_size_mib
+    error_message = "Firehose 버퍼 크기는 1~128 MiB 사이의 정수여야 합니다."
+  }
+}
+
+variable "firehose_buffering_interval_seconds" {
+  description = "서비스·CI Firehose의 S3 전달 버퍼 시간 힌트(초). 종단 간 지연 상한이 아님"
+  type        = number
+  default     = 60
+
+  validation {
+    condition     = var.firehose_buffering_interval_seconds >= 0 && var.firehose_buffering_interval_seconds <= 900 && floor(var.firehose_buffering_interval_seconds) == var.firehose_buffering_interval_seconds
+    error_message = "Firehose 버퍼 시간은 0~900초 사이의 정수여야 합니다."
+  }
+}
+
+variable "s3_queue_notifications_enabled" {
+  description = "서비스 가공 S3의 SQS 알림 리소스 생성 여부"
+  type        = bool
+  default     = true
+  nullable    = false
 }

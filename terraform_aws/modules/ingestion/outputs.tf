@@ -1,18 +1,3 @@
-output "stream_name" {
-  description = "IoT Topic Rule에서 사용할 Kinesis 스트림 이름"
-  value       = aws_kinesis_stream.telemetry.name
-}
-
-output "stream_arn" {
-  description = "archive·processing 모듈 연동에 사용할 Kinesis 스트림 ARN"
-  value       = aws_kinesis_stream.telemetry.arn
-}
-
-output "stream_kms_key_arn" {
-  description = "전달 실행 역할에 복호화 권한을 부여할 스트림 암호화 키 ARN"
-  value       = aws_kms_key.telemetry.arn
-}
-
 output "iot_device_connections" {
   description = "차량별 MQTT 접속 정보. 개인키 및 인증서 PEM은 포함하지 않습니다."
   value = {
@@ -37,7 +22,13 @@ output "iot_rule_name" {
   value       = aws_iot_topic_rule.telemetry.name
 }
 
+output "iot_rule_arn" {
+  description = "서비스 Lambda의 호출 권한을 해당 IoT Rule로 제한할 ARN"
+  # Rule 리소스 대신 사전에 계산한 ARN을 전달해 전환 단계의 순환 의존을 피합니다.
+  value = local.iot_rule_arn
+}
+
 output "iot_error_log_group_name" {
-  description = "IoT 규칙의 Kinesis 전달 오류 로그 그룹"
+  description = "IoT 규칙의 메시지 전달 오류 로그 그룹"
   value       = aws_cloudwatch_log_group.iot_errors.name
 }

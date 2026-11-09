@@ -6,43 +6,42 @@ resource "aws_cloudwatch_dashboard" "pipeline" {
       {
         type = "metric", x = 0, y = 0, width = 12, height = 6
         properties = {
-          title = "Kinesis input / output records", region = var.aws_region
+          title = "Firehose 수신·S3 전달 레코드", region = var.aws_region
           view  = "timeSeries", period = 60, stat = "Sum"
           metrics = [
-            ["AWS/Kinesis", "IncomingRecords", "StreamName", var.stream_name],
-            ["AWS/Kinesis", "GetRecords.Records", "StreamName", var.stream_name]
+            ["AWS/Firehose", "IncomingRecords", "DeliveryStreamName", var.firehose_stream_name],
+            ["AWS/Firehose", "DeliveryToS3.Records", "DeliveryStreamName", var.firehose_stream_name]
           ]
         }
       },
       {
         type = "metric", x = 12, y = 0, width = 12, height = 6
         properties = {
-          title = "Kinesis throttling", region = var.aws_region
+          title = "Firehose 쓰기 제한·전달 오류 로그", region = var.aws_region
           view  = "timeSeries", period = 60, stat = "Sum"
           metrics = [
-            ["AWS/Kinesis", "WriteProvisionedThroughputExceeded", "StreamName", var.stream_name],
-            ["AWS/Kinesis", "ReadProvisionedThroughputExceeded", "StreamName", var.stream_name]
+            ["AWS/Firehose", "ThrottledRecords", "DeliveryStreamName", var.firehose_stream_name],
+            ["UBI/${var.name_prefix}", "FirehoseDeliveryErrorLogs"]
           ]
         }
       },
       {
         type = "metric", x = 0, y = 6, width = 12, height = 6
         properties = {
-          title = "S3 delivered / failed records", region = var.aws_region
-          view  = "timeSeries", period = 300, stat = "Sum"
+          title = "Firehose S3 전달 데이터 지연 (초)", region = var.aws_region
+          view  = "timeSeries", period = 60, stat = "Maximum"
           metrics = [
-            ["AWS/Kinesis", "DeliveryToS3.SuccessfulRecordCount", "ChannelName", var.channel_name, "ChannelId", var.channel_id, "StreamName", var.stream_name],
-            ["AWS/Kinesis", "DeliveryToS3.FailedRecordCount", "ChannelName", var.channel_name, "ChannelId", var.channel_id, "StreamName", var.stream_name]
+            ["AWS/Firehose", "DeliveryToS3.DataFreshness", "DeliveryStreamName", var.firehose_stream_name]
           ]
         }
       },
       {
         type = "metric", x = 12, y = 6, width = 12, height = 6
         properties = {
-          title = "S3 delivery freshness (seconds)", region = var.aws_region
-          view  = "timeSeries", period = 300, stat = "Maximum"
+          title = "Lambda 비동기 이벤트 대기 (밀리초)", region = var.aws_region
+          view  = "timeSeries", period = 60, stat = "Maximum"
           metrics = [
-            ["AWS/Kinesis", "DeliveryToS3.DataFreshness", "ChannelName", var.channel_name, "ChannelId", var.channel_id, "StreamName", var.stream_name]
+            ["AWS/Lambda", "AsyncEventAge", "FunctionName", var.processing_function_name]
           ]
         }
       },
@@ -71,9 +70,9 @@ resource "aws_cloudwatch_dashboard" "pipeline" {
       {
         type = "log", x = 0, y = 18, width = 24, height = 6
         properties = {
-          title = "Kinesis S3 delivery logs", region = var.aws_region
+          title = "Firehose S3 전달 오류 로그", region = var.aws_region
           view  = "table"
-          query = "SOURCE '${var.delivery_log_group_name}' | fields @timestamp, @message | sort @timestamp desc | limit 50"
+          query = "SOURCE '${var.firehose_log_group_name}' | fields @timestamp, @message | sort @timestamp desc | limit 50"
         }
       },
       {
@@ -92,9 +91,12 @@ resource "aws_cloudwatch_dashboard" "pipeline" {
       {
         type = "metric", x = 12, y = 24, width = 12, height = 6
         properties = {
-          title   = "Processing Kinesis iterator age (milliseconds)", region = var.aws_region
-          view    = "timeSeries", period = 60, stat = "Maximum"
-          metrics = [["AWS/Lambda", "IteratorAge", "FunctionName", var.processing_function_name]]
+          title = "Lambda 비동기 수신·최종 실패 이벤트", region = var.aws_region
+          view  = "timeSeries", period = 60, stat = "Sum"
+          metrics = [
+            ["AWS/Lambda", "AsyncEventsReceived", "FunctionName", var.processing_function_name],
+            ["AWS/Lambda", "AsyncEventsDropped", "FunctionName", var.processing_function_name]
+          ]
         }
       },
       {
