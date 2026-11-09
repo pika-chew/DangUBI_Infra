@@ -138,7 +138,8 @@ pipeline {
                     agent {
                         docker {
                             image "ghcr.io/terraform-linters/tflint:${TFLINT_VERSION}"
-                            args '--entrypoint='
+                            // 기본 브리지(MTU 1500)에서는 VM NIC(MTU 1450)보다 커서 플러그인 다운로드의 TLS 핸드셰이크가 멈출 수 있습니다.
+                            args '--entrypoint= --network host'
                             reuseNode true
                         }
                     }
@@ -168,7 +169,7 @@ pipeline {
                     }
                     steps {
                         dir(TF_DIR) {
-                            sh 'gitleaks dir . --config .gitleaks.toml --redact --no-banner'
+                            sh 'gitleaks dir . --config .gitleaks.toml --redact --no-banner --verbose'
                         }
                     }
                     post {
