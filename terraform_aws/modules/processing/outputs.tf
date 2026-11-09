@@ -62,3 +62,33 @@ output "function_log_group_name" {
   description = "전처리 Lambda 로그 그룹"
   value       = aws_cloudwatch_log_group.preprocess.name
 }
+
+output "ci_function_name" {
+  description = "Jenkins가 후보 이미지를 배포하고 직접 호출할 CI Lambda 이름"
+  value       = aws_lambda_function.preprocess_ci.function_name
+}
+
+output "ci_function_arn" {
+  description = "Jenkins의 CI Lambda 권한 범위를 제한할 함수 ARN"
+  value       = aws_lambda_function.preprocess_ci.arn
+}
+
+output "ci_function_log_group_name" {
+  description = "CI Lambda 로그 그룹"
+  value       = aws_cloudwatch_log_group.preprocess_ci.name
+}
+
+output "ci_queue_url" {
+  description = "CI 결과 확인용 테스트 SQS URL"
+  value       = aws_sqs_queue.ingestion_ci.url
+}
+
+output "ci_queue_arn" {
+  description = "Jenkins의 테스트 SQS 조회 권한을 제한할 ARN"
+  value       = aws_sqs_queue.ingestion_ci.arn
+}
+
+output "ci_processed_bucket_name" {
+  description = "CI 결과 확인용 테스트 S3 버킷 이름"
+  value       = aws_s3_bucket.processed_ci.id
+}

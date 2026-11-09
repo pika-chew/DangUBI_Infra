@@ -24,7 +24,10 @@ resource "aws_ecr_repository_policy" "preprocess" {
       Action    = ["ecr:BatchGetImage", "ecr:GetDownloadUrlForLayer"]
       Condition = {
         ArnLike = {
-          "aws:SourceArn" = "arn:aws:lambda:${var.aws_region}:${var.aws_account_id}:function:${local.function_name}"
+          "aws:SourceArn" = [
+            "arn:aws:lambda:${var.aws_region}:${var.aws_account_id}:function:${local.function_name}",
+            "arn:aws:lambda:${var.aws_region}:${var.aws_account_id}:function:${local.ci_function_name}"
+          ]
         }
       }
     }]

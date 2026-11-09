@@ -83,6 +83,36 @@ output "processing_log_group" {
   value       = module.processing.function_log_group_name
 }
 
+output "processing_ci_function_name" {
+  description = "Jenkins 검증용 Lambda 이름"
+  value       = module.processing.ci_function_name
+}
+
+output "processing_ci_function_arn" {
+  description = "Jenkins 검증용 Lambda ARN"
+  value       = module.processing.ci_function_arn
+}
+
+output "processing_ci_log_group" {
+  description = "Jenkins 검증용 Lambda 로그 그룹"
+  value       = module.processing.ci_function_log_group_name
+}
+
+output "processing_ci_queue_url" {
+  description = "Jenkins 검증 결과 확인용 SQS URL"
+  value       = module.processing.ci_queue_url
+}
+
+output "processing_ci_queue_arn" {
+  description = "Jenkins 검증 결과 확인용 SQS ARN"
+  value       = module.processing.ci_queue_arn
+}
+
+output "processing_ci_processed_bucket_name" {
+  description = "Jenkins 검증 결과 확인용 S3 버킷 이름"
+  value       = module.processing.ci_processed_bucket_name
+}
+
 output "iot_device_connections" {
   description = "시뮬레이터에서 사용할 차량별 MQTT 접속 정보"
   value       = module.ingestion.iot_device_connections
