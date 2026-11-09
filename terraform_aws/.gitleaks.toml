@@ -2,7 +2,9 @@
 useDefault = true
 
 [allowlist]
-description = "terraform init 결과물(provider 바이너리 등)은 검사하지 않습니다."
+description = "terraform init 결과물(provider 바이너리 등)과 제거 예정인 테스트 차량 개인키는 검사하지 않습니다."
 paths = [
   '''(^|/)\.terraform/''',
+  # 임시 예외: git에서 이 키를 제거하면 함께 삭제합니다.
+  '''(^|/)certificates/vehicle-001/private-key\.pem$''',
 ]
