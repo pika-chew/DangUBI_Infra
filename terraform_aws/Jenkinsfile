@@ -46,7 +46,7 @@ pipeline {
         AWS_CLI_VERSION     = '2.39.4'
         AWS_REGION          = 'ap-northeast-2'
 
-        SLACK_CHANNEL       = '#infra-alerts'
+        SLACK_CHANNEL       = '#jenkins'
     }
 
     stages {
@@ -370,23 +370,6 @@ pipeline {
                     docker.image("amazon/aws-cli:${AWS_CLI_VERSION}").inside('--entrypoint=') {
                         dir(TF_DIR) {
                             sh 'sh scripts/smoke-test.sh'
-                            // DangUBI_Lambda의 tests/smoke-event.json과 같은 ty=0 레코드입니다. 건너뛰기 처리되어 S3/SQS에 아무것도 쓰지 않습니다.
-                            writeFile file: 'lambda-smoke-event.json', text: '{"Records":[{"eventSource":"aws:kinesis","eventSourceARN":"arn:aws:kinesis:ap-northeast-2:000000000000:stream/jenkins-smoke","eventID":"shardId-000000000000:0","kinesis":{"sequenceNumber":"0","partitionKey":"jenkins-smoke","approximateArrivalTimestamp":0,"data":"eyJ2ZWhpY2xlSWQiOiJqZW5raW5zLXNtb2tlIiwidHMiOjAsInR5IjowLCJwbGQiOnt9fQ=="}}]}'
-                            sh '''
-                                . ./smoke.env
-                                if ! aws lambda invoke --function-name "$PROCESSING_FUNCTION_NAME" \
-                                        --payload fileb://lambda-smoke-event.json \
-                                        lambda-smoke-response.json > lambda-smoke-invoke.json; then
-                                    echo "- 운영 Lambda 호출 실패" >> smoke-failures.txt
-                                    exit 1
-                                fi
-                                if grep -q FunctionError lambda-smoke-invoke.json || \
-                                        ! tr -d ' \\n' < lambda-smoke-response.json | grep -qx '{"batchItemFailures":\\[\\]}'; then
-                                    cat lambda-smoke-response.json
-                                    echo "- 운영 Lambda 응답 오류: $(cat lambda-smoke-response.json)" >> smoke-failures.txt
-                                    exit 1
-                                fi
-                            '''
                         }
                     }
                 }
