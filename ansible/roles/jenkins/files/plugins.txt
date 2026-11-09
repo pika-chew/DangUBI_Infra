@@ -26,6 +26,7 @@ ldap:825.v2fca_37dd5b_cb_
 
 # --- 알림 ---
 email-ext:2038.v7b_8817a_499d9
+slack
 
 # --- 편의 / 운영 ---
 timestamper:1.30

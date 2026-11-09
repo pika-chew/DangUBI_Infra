@@ -1,0 +1,24 @@
+framework:
+  - terraform
+skip-path:
+  - .terraform
+compact: true
+quiet: true
+
+# dev 환경 구성과 맞지 않아 의도적으로 제외하는 검사입니다. 운영 환경을 만들면 다시 검토합니다.
+skip-check:
+  # 비용·복잡도 대비 dev에서 불필요
+  - CKV_AWS_144  # S3 cross-region replication
+  - CKV_AWS_18   # S3 access logging
+  - CKV2_AWS_62  # S3 event notifications
+  - CKV_AWS_338  # CloudWatch log 1년 보관 (cloudwatch_log_retention_days로 관리)
+  - CKV_AWS_50   # Lambda X-Ray tracing
+  # 고객 관리형 KMS 대신 AWS 관리형 암호화(SSE-S3, AES256 등)를 사용
+  - CKV_AWS_145  # S3 KMS 기본 암호화
+  - CKV_AWS_136  # ECR KMS 암호화
+  - CKV_AWS_158  # CloudWatch Log Group KMS 암호화
+  - CKV_AWS_173  # Lambda 환경 변수 KMS 암호화 (시크릿을 환경 변수에 두지 않음)
+  # 아키텍처상 해당 없음
+  - CKV_AWS_117  # Lambda VPC 배치 (VPC 리소스에 접근하지 않음)
+  - CKV_AWS_116  # Lambda DLQ (Kinesis 이벤트 소스는 on_failure destination으로 처리)
+  - CKV_AWS_272  # Lambda code signing (컨테이너 이미지는 대상 아님, 이미지는 digest로 고정)
