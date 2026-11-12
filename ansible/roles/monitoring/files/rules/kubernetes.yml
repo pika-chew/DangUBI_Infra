@@ -1,0 +1,96 @@
+# K8s 클러스터 알림. 메트릭은 K8s Alloy DaemonSet이 보낸다(DangUBI_GitOps helm/alloy/values.yaml).
+# 대상이 응답하지 않는 경우(up == 0)는 base.yml의 TargetDown이 잡으므로 여기서는 상태 이상만 다룬다.
+groups:
+  # kube-state-metrics: K8s 오브젝트 상태
+  - name: kubernetes-objects
+    rules:
+      - alert: KubeNodeNotReady
+        # K8s가 NotReady로 판정하는 데 이미 40~50초가 걸리므로, 2분이면 재부팅과 구분된다.
+        expr: kube_node_status_condition{condition="Ready", status="true"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "K8s 노드 {{ $labels.node }}가 2분 이상 NotReady"
+
+      # 컨테이너가 계속 죽고 재시작을 반복하는 상태. CrashLoopBackOff 자체가 이미 여러 번 실패했다는 뜻이라 짧게 둔다.
+      - alert: KubePodCrashLooping
+        expr: kube_pod_container_status_waiting_reason{reason="CrashLoopBackOff"} == 1
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.namespace }}/{{ $labels.pod }}의 {{ $labels.container }} 컨테이너가 재시작을 반복 중"
+
+      # 노드 배치 실패(자원 부족 등)나 이미지 받기 실패로 시작하지 못하는 Pod
+      - alert: KubePodNotReady
+        expr: kube_pod_status_phase{phase=~"Pending|Unknown"} == 1
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.namespace }}/{{ $labels.pod }}가 15분 이상 {{ $labels.phase }} 상태"
+
+      - alert: KubeDeploymentReplicasMismatch
+        expr: kube_deployment_spec_replicas != kube_deployment_status_replicas_available
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.namespace }}/{{ $labels.deployment }} 원하는 Pod 수와 실제 사용 가능한 Pod 수가 15분 이상 다름"
+
+      # CronJob이 만든 Job도 포함한다. 실패한 Job 오브젝트가 지워질 때까지 계속 울린다.
+      - alert: KubeJobFailed
+        expr: kube_job_status_failed > 0
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.namespace }}/{{ $labels.job_name }} Job 실패"
+
+  # 컨트롤 플레인: CP 노드 3대의 API 서버, etcd
+  - name: kubernetes-control-plane
+    rules:
+      # 리더가 없으면 etcd에 쓸 수 없어 클러스터 변경(배포, 스케일 등)이 모두 멈춘다.
+      - alert: EtcdNoLeader
+        expr: etcd_server_has_leader == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "{{ $labels.instance }}의 etcd에 리더가 없음"
+
+      # etcd는 쓰기마다 디스크 fsync를 기다린다. 느리면 API 서버 전체가 느려지고 리더 선출이 흔들린다.
+      - alert: EtcdSlowDisk
+        expr: |
+          histogram_quantile(0.99,
+            sum by (instance, le) (rate(etcd_disk_wal_fsync_duration_seconds_bucket[5m]))
+          ) > 0.5
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.instance }} etcd 디스크 쓰기 지연 p99 {{ $value | printf \"%.2f\" }}초"
+
+      - alert: KubeAPIErrorsHigh
+        expr: |
+          sum by (instance) (rate(apiserver_request_total{code=~"5.."}[5m]))
+            / sum by (instance) (rate(apiserver_request_total[5m])) * 100 > 5
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.instance }} API 서버 5xx 응답 비율 {{ $value | printf \"%.1f\" }}%"
+
+  # CoreDNS: 클러스터 내부 DNS
+  - name: kubernetes-dns
+    rules:
+      # SERVFAIL은 DNS 서버가 답을 만들지 못한 경우다. 늘면 Pod 간 서비스 이름 호출이 실패한다.
+      - alert: CoreDNSErrorsHigh
+        expr: |
+          sum(rate(coredns_dns_responses_total{rcode="SERVFAIL"}[5m]))
+            / sum(rate(coredns_dns_responses_total[5m])) * 100 > 5
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "CoreDNS SERVFAIL 비율 {{ $value | printf \"%.1f\" }}%"
