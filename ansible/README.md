@@ -59,7 +59,7 @@ docker exec jenkins cat /var/jenkins_home/secrets/initialAdminPassword
 
 모니터링 VM(`observability-vm`)에 관측 백엔드를 구축합니다.
 
-- 주소: Floating IP `10.20.0.140` / 사설 IP `172.16.20.182`
+- 주소: Floating IP `10.20.0.140` / 사설 IP `172.16.20.20`
 - Ansible은 Floating IP로 접속 (`inventory/hosts.yml`의 `monitoring` 그룹)
 - 저장소 데이터는 Cinder 볼륨 없이 인스턴스 루트 디스크(120GB)에 저장
 
