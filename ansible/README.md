@@ -75,9 +75,10 @@ ansible-playbook playbooks/monitoring-docker.yml
 ### Prometheus · Alertmanager · Grafana
 
 ```bash
-# 최초 1회: Grafana 관리자 비밀번호를 Vault로 암호화해 저장
+# 최초 1회: 비밀값을 Vault로 암호화해 저장
 ansible-vault create inventory/group_vars/monitoring/vault.yml
 #   vault_grafana_admin_password: <비밀번호>
+#   vault_alertmanager_slack_webhook_url: <Slack Incoming Webhook URL>
 
 ansible-playbook playbooks/monitoring.yml --ask-vault-pass
 ```
@@ -91,9 +92,14 @@ ansible-playbook playbooks/monitoring.yml --ask-vault-pass
 
 - 이미지 버전, 포트, 보관 기간(30일 / 40GB), MTU: `roles/monitoring/defaults/main.yml`
 - 알림 규칙: `roles/monitoring/files/rules/` (Jinja 렌더링 없이 복사)
+  - `base.yml`: Watchdog, TargetDown
+  - `node.yml`: 노드 디스크·메모리, Alloy 데이터 끊김 (물리 노드 + K8s 노드 공통)
+  - `kubernetes.yml`: 노드 NotReady, Pod·Deployment·Job 상태, etcd, API 서버, CoreDNS
+  - 배포 전 문법 검사: `promtool check rules` (prom/prometheus 이미지에 포함)
 - Grafana 데이터소스(Prometheus, Alertmanager): `roles/monitoring/files/grafana/provisioning/` 로 자동 등록
 - Prometheus는 `--web.enable-remote-write-receiver`로 Alloy의 remote_write를 받음
-- Alertmanager 수신자는 아직 `null`. Slack 웹훅이 준비되면 Vault에 넣고 `alertmanager.yml.j2`에 추가
+- Alertmanager는 모든 알림을 Slack으로 보낸다(해결 알림 포함). Watchdog만 `null`로 버리며, 이후 외부 하트비트로 연결
+- Alertmanager 설정 검사: 모니터링 VM에서 `docker exec alertmanager amtool check-config /etc/alertmanager/alertmanager.yml`
 - 설정 파일이 바뀌면 해당 컨테이너만 재시작(handler)
 - Grafana 관리자 비밀번호는 Grafana DB가 처음 만들어질 때만 적용됨
 
