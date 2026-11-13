@@ -1,0 +1,23 @@
+import_ids = {
+  instances = {
+    "jenkins-vm"       = ""
+    "observability-vm" = ""
+    "k8s-control-1"    = ""
+    "k8s-control-2"    = ""
+    "k8s-control-3"    = ""
+    "k8s-worker-1"     = ""
+    "k8s-worker-2"     = ""
+    "k8s-worker-3"     = ""
+    "k8s-worker-4"     = ""
+  }
+  networks = {
+    "ext-net" = ""
+    "k8s-net" = ""
+    "ops-net" = ""
+  }
+  subnets = {
+    "ext-subnet" = ""
+    "k8s-subnet" = ""
+    "ops-subnet" = ""
+  }
+}
