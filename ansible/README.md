@@ -367,6 +367,25 @@ Jenkins 자동 작업에서는 Credentials Binding으로 같은 두 환경변수
 별도 권한 관리 없이 Jenkins 작업이나 일반 사용자에게 배포하지 않습니다.
 join token은 단기 발급 후 회수하고, 임시 join 설정은 성공·실패 시 삭제합니다.
 
+### 교체한 Worker 한 대 재가입
+
+새 VM의 SSH 주소·사설 IP·물리 호스트·NIC가 inventory와 일치하는지 확인합니다.
+이름을 재사용할 때 기존 VM이 종료됐고 워크로드 정리가 끝났다면, Control Plane에서
+`kubectl --kubeconfig /etc/kubernetes/admin.conf delete node <기존-worker-이름>`으로 남아 있는 기존 Node를 제거합니다.
+로컬 PV를 사용 중이면 재가입 전에 새 VM의 데이터 디스크와 마운트를 확인합니다.
+
+Jenkins VM의 `ansible` 디렉터리에서 대상 Worker 한 대를 지정합니다.
+
+```bash
+ansible-playbook -i inventory/hosts.yml playbooks/kubernetes/rejoin-worker.yml \
+  --limit k8s-worker-4 --ask-vault-pass
+```
+
+첫 Control Plane의 API를 확인한 뒤 Worker를 준비하고 기존 클러스터에 가입시켜 `Ready`까지 기다립니다.
+OpenStack CCM을 사용하는 경우 재가입한 Node의 `spec.providerID`가 새 VM의 UUID와 일치하는지도 확인합니다.
+
+### 초기 구축 검증
+
 최종 검증은 API 응답, 7개 노드 Ready, inventory와 같은 InternalIP, 실제 OpenStack VM UUID와 같은
 providerID, CCM 미초기화 taint 해제, Calico·kube-proxy·CoreDNS rollout입니다.
 이어서 임시 Namespace와 Worker별 HTTP Pod 1개 및 ClusterIP Service를 생성합니다.

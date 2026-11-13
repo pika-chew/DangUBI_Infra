@@ -1,0 +1,78 @@
+---
+- name: Rejoin one worker to the existing cluster
+  hosts: kubernetes_workers
+  become: true
+  gather_facts: false
+  any_errors_fatal: true
+  vars:
+    kubernetes_primary: "{{ groups['kubernetes_control_plane'][0] }}"
+
+  pre_tasks:
+    - name: Require exactly one worker and an existing control plane
+      ansible.builtin.assert:
+        that:
+          - ansible_play_hosts_all | length == 1
+          - groups['kubernetes_control_plane'] | default([]) | length > 0
+          - not ansible_check_mode
+        fail_msg: --limit으로 Worker 한 대를 지정하고 --check 없이 실행하세요.
+
+    - name: Gather worker facts
+      ansible.builtin.setup:
+
+    - name: Validate worker configuration and record its join state
+      ansible.builtin.import_role:
+        name: kubernetes/preflight
+        tasks_from: node
+
+    - name: Check the existing cluster API
+      ansible.builtin.command:
+        argv: [kubectl, --kubeconfig, /etc/kubernetes/admin.conf, get, --raw=/readyz]
+      delegate_to: "{{ kubernetes_primary }}"
+      changed_when: false
+
+    - name: Check for a Node object with the replacement worker's name
+      ansible.builtin.command:
+        argv: [kubectl, --kubeconfig, /etc/kubernetes/admin.conf, get, node, "{{ inventory_hostname }}", --ignore-not-found, -o, name]
+      delegate_to: "{{ kubernetes_primary }}"
+      register: kubernetes_previous_node
+      changed_when: false
+      when: not kubernetes_already_joined | bool
+
+    - name: Require the old Node object to be removed before joining the new VM
+      ansible.builtin.assert:
+        that: kubernetes_previous_node.stdout | trim | length == 0
+        fail_msg: 같은 이름의 Node가 남아 있습니다. 이전 VM과 워크로드 상태를 확인한 뒤 기존 Node를 정리하세요.
+      when: not kubernetes_already_joined | bool
+
+  roles:
+    - role: kubernetes/common
+      when: not kubernetes_already_joined | bool
+    - role: kubernetes/packages
+      when: not kubernetes_already_joined | bool
+    - role: kubernetes/containerd
+      when: not kubernetes_already_joined | bool
+    - kubernetes/join
+
+  post_tasks:
+    - name: Wait for the kubelet to register the worker
+      ansible.builtin.command:
+        argv: [kubectl, --kubeconfig, /etc/kubernetes/admin.conf, get, node, "{{ inventory_hostname }}", -o, name]
+      delegate_to: "{{ kubernetes_primary }}"
+      register: kubernetes_worker_registration
+      until: kubernetes_worker_registration.rc == 0
+      retries: 20
+      delay: 3
+      changed_when: false
+
+    - name: Wait for the worker to become Ready
+      ansible.builtin.command:
+        argv:
+          - kubectl
+          - --kubeconfig
+          - /etc/kubernetes/admin.conf
+          - wait
+          - --for=condition=Ready
+          - "--timeout={{ kubernetes_addon_timeout }}s"
+          - "node/{{ inventory_hostname }}"
+      delegate_to: "{{ kubernetes_primary }}"
+      changed_when: false
