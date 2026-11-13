@@ -1,0 +1,28 @@
+# {{ ansible_managed }}
+ui           = {{ hashicorp_vault_ui | lower }}
+cluster_name = "{{ hashicorp_vault_cluster_name }}"
+
+# Raft 스토리지는 mmap을 쓰므로 mlock을 끄는 것이 공식 권장. 대신 swap을 끈다(role에서 처리)
+disable_mlock = true
+
+storage "raft" {
+  path    = "{{ hashicorp_vault_data_dir }}"
+  node_id = "{{ inventory_hostname }}"
+}
+
+listener "tcp" {
+  address         = "0.0.0.0:{{ hashicorp_vault_api_port }}"
+  cluster_address = "0.0.0.0:{{ hashicorp_vault_cluster_port }}"
+  tls_cert_file   = "{{ hashicorp_vault_tls_cert }}"
+  tls_key_file    = "{{ hashicorp_vault_tls_key }}"
+  tls_min_version = "tls12"
+}
+
+api_addr     = "https://{{ hashicorp_vault_private_ip }}:{{ hashicorp_vault_api_port }}"
+cluster_addr = "https://{{ hashicorp_vault_private_ip }}:{{ hashicorp_vault_cluster_port }}"
+
+# /v1/sys/metrics?format=prometheus. 수집 시 토큰 필요
+telemetry {
+  prometheus_retention_time = "24h"
+  disable_hostname          = true
+}
