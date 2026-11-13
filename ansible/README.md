@@ -151,6 +151,68 @@ kolla-ansible reconfigure -i multinode -t rabbitmq --ask-become-pass   # RabbitM
 ---
 <br>
 
+## Vault setup
+
+Vault 전용 VM(`vault-vm`)에 HashiCorp Vault를 설치합니다.
+
+- 주소: Floating IP `10.20.0.170` / 사설 IP `172.16.20.30`
+- Ansible은 Floating IP로 접속 (`inventory/hosts.yml`의 `vault` 그룹)
+- 설치 방식: HashiCorp 공식 APT 저장소 + systemd (`vault.service`)
+- 스토리지: 단일 노드 Raft(integrated storage), 데이터는 루트 디스크 `/opt/vault/data`
+
+```bash
+# 최초 1회: jenkins-vm에서 SSH 접속해 host key 등록, sudo 확인
+ssh ubuntu@10.20.0.170 'sudo -n true && echo sudo-ok'
+
+ansible-galaxy collection install -r collections/requirements.yml   # community.crypto 추가됨
+ansible vault -m ping
+ansible-playbook playbooks/vault.yml
+```
+`vault.yml`: APT로 Vault 설치 후 패키지 hold, TLS 인증서 발급, `/etc/vault.d/vault.hcl` 생성, 서비스 실행 후 `/v1/sys/health`로 상태 확인
+
+| 포트 | 용도 |
+|---|---|
+| 8200 | API·UI (HTTPS) |
+| 8201 | 클러스터 통신 (단일 노드라 현재 미사용) |
+
+- 버전, 포트, 경로, 인증서 유효기간: `roles/vault/defaults/main.yml`
+  - 변수 접두어는 `hashicorp_vault_`. `vault_` 접두어는 Ansible Vault 비밀값 전용
+  - `hashicorp_vault_version`을 비우면 최신 버전 설치. 설치 후 `apt-mark hold`하므로 업그레이드는 이 값을 바꿔서 진행
+- 호스트별 값(사설 IP, 인증서 SAN 추가 주소): `inventory/group_vars/vault/vars.yml`
+- Raft 스토리지 공식 권장에 따라 `disable_mlock = true`로 두고, 대신 role이 swap을 끈다
+- 설정 파일이 바뀌면 서비스를 재시작하며, **재시작하면 sealed 상태가 되므로 다시 unseal 필요**. 인증서만 바뀐 경우는 reload(SIGHUP)라 sealed 되지 않음
+
+### TLS
+
+부트스트랩용 자체 CA를 VM에서 만들고, 그 CA로 서버 인증서를 발급합니다.
+
+- CA 인증서: `/opt/vault/tls/vault-ca.crt` (플레이북이 jenkins-vm의 `~/.vault/dangubi-vault-ca.crt`로 복사)
+- 서버 인증서 SAN: 사설 IP, `127.0.0.1`, `localhost`, 호스트명 + `hashicorp_vault_tls_extra_sans`(Floating IP)
+- 클라이언트는 `VAULT_CACERT`(또는 각 도구의 CA 옵션)에 CA 인증서를 지정해 검증
+- vault-vm 셸에는 `/etc/profile.d/vault.sh`로 `VAULT_ADDR`, `VAULT_CACERT`가 설정되어 있음
+
+### 초기화와 unseal (수동)
+
+unseal key와 root token이 Ansible 로그·파일에 남지 않도록 자동화하지 않습니다. 최초 1회 vault-vm에서 직접 실행합니다.
+
+```bash
+ssh ubuntu@10.20.0.170
+vault status                      # Initialized false, Sealed true
+
+# unseal key 5개 중 3개로 unseal (Shamir). 출력은 화면에서만 확인하고 파일로 저장하지 않는다
+vault operator init -key-shares=5 -key-threshold=3
+
+vault operator unseal             # 서로 다른 키로 3번 반복
+vault status                      # Sealed false
+```
+
+- unseal key는 팀원에게 나눠 보관하고, Git·Slack·Ansible Vault 파일에 함께 두지 않는다
+- root token은 초기 설정(인증 방식·정책 생성) 후 `vault token revoke`로 폐기하고, 필요할 때 `vault operator generate-root`로 다시 발급
+- VM 재부팅이나 서비스 재시작 뒤에는 `vault operator unseal`을 다시 실행해야 함
+
+---
+<br>
+
 ## Kubernetes setup
 
 OpenStack VM 위에 kubeadm + containerd로 단일 Kubernetes 클러스터를 구성합니다.
