@@ -1,0 +1,52 @@
+# 노드 자원 알림. 물리 노드(cluster="openstack")와 K8s 노드(cluster="k8s")에 공통으로 적용한다.
+# 노드 메트릭의 job 이름은 물리 노드가 integrations/unix, K8s 노드가 node다.
+groups:
+  - name: node
+    rules:
+      # 읽기 전용이나 메모리 기반 파일시스템은 제외한다. (원래 꽉 차 있거나 쓸 일이 없는 경우가 많아 알림이 의미 없이 울린다.)
+      - alert: NodeDiskAlmostFull
+        expr: |
+          node_filesystem_avail_bytes{fstype!~"tmpfs|ramfs|overlay|squashfs|nsfs"}
+            / node_filesystem_size_bytes * 100 < 15
+          and node_filesystem_readonly == 0
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.instance }}의 {{ $labels.mountpoint }} 남은 공간 {{ $value | printf \"%.1f\" }}%"
+
+      - alert: NodeDiskCritical
+        expr: |
+          node_filesystem_avail_bytes{fstype!~"tmpfs|ramfs|overlay|squashfs|nsfs"}
+            / node_filesystem_size_bytes * 100 < 5
+          and node_filesystem_readonly == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "{{ $labels.instance }}의 {{ $labels.mountpoint }} 남은 공간 {{ $value | printf \"%.1f\" }}%"
+
+      # MemAvailable은 캐시처럼 바로 돌려받을 수 있는 메모리까지 포함한 실제 여유분이다.
+      - alert: NodeMemoryHigh
+        expr: node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes * 100 < 10
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.instance }} 사용 가능 메모리 {{ $value | printf \"%.1f\" }}%"
+
+  - name: collector
+    rules:
+      # Alloy가 죽거나 전송이 끊기면 up 자체가 오지 않아 TargetDown(up == 0)이 울리지 않는다.
+      # 하루 안에 노드 메트릭을 보낸 적이 있는데 지금은 없는 노드를 찾는다.
+      # 노드를 일부러 없앤 경우에도 하루 동안 울리고, 하루 넘게 끊기면 사라진다.
+      - alert: AlloyMetricsMissing
+        expr: |
+          group by (cluster, instance) (max_over_time(up{job=~"node|integrations/unix"}[1d]))
+          unless
+          group by (cluster, instance) (up{job=~"node|integrations/unix"})
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "{{ $labels.cluster }}/{{ $labels.instance }}에서 노드 메트릭이 들어오지 않음 (Alloy 중단 또는 전송 실패)"

@@ -1,11 +1,38 @@
+# 웹훅 URL은 Vault 값(vault_alertmanager_slack_webhook_url)에서 온다. 채널은 웹훅을 만들 때 정해진다.
+global:
+  slack_api_url: "{{ alertmanager_slack_webhook_url }}"
+
 route:
-  receiver: "null"
+  receiver: slack
+  # 같은 알림 이름·환경·클러스터끼리 메시지 1개로 묶는다
   group_by: [alertname, env, cluster]
   group_wait: 30s
   group_interval: 5m
   repeat_interval: 4h
+  routes:
+    # 항상 울리는 하트비트라 Slack으로 보내면 4시간마다 의미 없는 메시지가 온다.
+    # 이후 외부 하트비트 서비스로 라우팅한다.
+    - matchers: ['alertname = "Watchdog"']
+      receiver: "null"
 
-# Slack 웹훅이 준비되면 수신자를 추가하고 route.receiver를 바꾼다
-# Watchdog는 이후 외부 하트비트로 라우팅
+# 같은 디스크에 critical이 울리면 warning은 보내지 않는다
+inhibit_rules:
+  - source_matchers: ['alertname = "NodeDiskCritical"']
+    target_matchers: ['alertname = "NodeDiskAlmostFull"']
+    equal: [cluster, instance, mountpoint]
+
 receivers:
   - name: "null"
+  - name: slack
+    slack_configs:
+      # 해결됐을 때도 알린다
+      - send_resolved: true
+{% raw %}
+        # 예: [FIRING:2] NodeDiskAlmostFull (k8s)
+        title: '[{{ .Status | toUpper }}{{ if eq .Status "firing" }}:{{ .Alerts.Firing | len }}{{ end }}] {{ .CommonLabels.alertname }} ({{ .CommonLabels.cluster }})'
+        # 발생 = critical 빨강 / warning 노랑, 해결 = 초록
+        color: '{{ if eq .Status "firing" }}{{ if eq .CommonLabels.severity "critical" }}danger{{ else }}warning{{ end }}{{ else }}good{{ end }}'
+        text: |-
+          {{ range .Alerts }}• *{{ .Labels.severity }}* {{ .Annotations.summary }}
+          {{ end }}
+{% endraw %}
