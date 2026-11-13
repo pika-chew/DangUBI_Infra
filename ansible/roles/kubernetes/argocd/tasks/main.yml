@@ -1,0 +1,93 @@
+---
+# 공식 호환표에서 Argo CD 3.5의 테스트 범위는 Kubernetes 1.33~1.36입니다.
+- name: Require supported Argo CD configuration
+  ansible.builtin.assert:
+    that:
+      - kubernetes_argocd_version is match('^v3[.]5[.][0-9]+$')
+      - kubernetes_version is version('1.33.0', '>=')
+      - kubernetes_version is version('1.37.0', '<')
+      - kubernetes_addon_timeout | int >= 60
+    fail_msg: 현재 role은 Argo CD 3.5와 Kubernetes 1.33~1.36 조합을 지원합니다.
+
+- name: Verify Kubernetes API readiness before installing Argo CD
+  ansible.builtin.command: kubectl --kubeconfig /etc/kubernetes/admin.conf get --raw=/readyz
+  changed_when: false
+
+- name: Create versioned Argo CD manifest directory
+  ansible.builtin.file:
+    path: "/etc/kubernetes/addons/argocd-{{ kubernetes_argocd_version }}"
+    state: directory
+    mode: '0700'
+
+- name: Download pinned Argo CD manifest
+  ansible.builtin.get_url:
+    url: "https://raw.githubusercontent.com/argoproj/argo-cd/{{ kubernetes_argocd_version }}/manifests/install.yaml"
+    dest: "/etc/kubernetes/addons/argocd-{{ kubernetes_argocd_version }}/install.yaml"
+    mode: '0600'
+    timeout: 60
+
+# 공식 매니페스트의 ClusterRoleBinding이 argocd Namespace를 고정 참조하므로 이름을 바꾸지 않습니다.
+- name: Apply Argo CD namespace
+  ansible.builtin.command:
+    argv: [kubectl, --kubeconfig, /etc/kubernetes/admin.conf, apply, -f, '-']
+    stdin: "{{ {'apiVersion': 'v1', 'kind': 'Namespace', 'metadata': {'name': 'argocd'}} | to_json }}"
+  register: kubernetes_argocd_namespace
+  changed_when: "'created' in kubernetes_argocd_namespace.stdout or 'configured' in kubernetes_argocd_namespace.stdout"
+
+# CRD가 last-applied annotation 크기 제한을 넘으므로 공식 문서대로 SSA로 적용합니다.
+# SSA 출력은 변경 여부를 구분하지 않아 diff 결과로 재실행 시 변경 없음을 판단합니다.
+- name: Check Argo CD manifest changes
+  ansible.builtin.command:
+    argv:
+      - kubectl
+      - --kubeconfig
+      - /etc/kubernetes/admin.conf
+      - diff
+      - -n
+      - argocd
+      - --server-side
+      - --force-conflicts
+      - --field-manager=dangubi-argocd-bootstrap
+      - -f
+      - "/etc/kubernetes/addons/argocd-{{ kubernetes_argocd_version }}/install.yaml"
+  register: kubernetes_argocd_diff
+  failed_when: kubernetes_argocd_diff.rc not in [0, 1]
+  changed_when: false
+
+- name: Apply official Argo CD manifest
+  ansible.builtin.command:
+    argv:
+      - kubectl
+      - --kubeconfig
+      - /etc/kubernetes/admin.conf
+      - apply
+      - -n
+      - argocd
+      - --server-side
+      - --force-conflicts
+      - --field-manager=dangubi-argocd-bootstrap
+      - -f
+      - "/etc/kubernetes/addons/argocd-{{ kubernetes_argocd_version }}/install.yaml"
+  when: kubernetes_argocd_diff.rc == 1
+  changed_when: true
+
+- name: Wait for Argo CD workloads
+  ansible.builtin.command:
+    argv: [kubectl, --kubeconfig, /etc/kubernetes/admin.conf, -n, argocd, rollout, status,
+           "{{ item }}", "--timeout={{ kubernetes_addon_timeout }}s"]
+  loop:
+    - deployment/argocd-redis
+    - deployment/argocd-repo-server
+    - deployment/argocd-dex-server
+    - deployment/argocd-applicationset-controller
+    - deployment/argocd-notifications-controller
+    - deployment/argocd-server
+    - statefulset/argocd-application-controller
+  changed_when: false
+
+- name: Report Argo CD installation
+  ansible.builtin.debug:
+    msg: >-
+      Argo CD {{ kubernetes_argocd_version }} workload 7개의 rollout을 확인했습니다.
+      Service는 ClusterIP이며, 접속 방법과 초기 admin 비밀번호 확인은 ansible/README.md를 참고하세요.
+      Application 등록은 후속 작업입니다.

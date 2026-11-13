@@ -38,6 +38,7 @@ kubernetes_openstack_application_credential_id: "{{ lookup('ansible.builtin.env'
 kubernetes_openstack_application_credential_secret: "{{ lookup('ansible.builtin.env', 'OS_APPLICATION_CREDENTIAL_SECRET') }}"
 kubernetes_addon_timeout: 600 # 이미지 다운로드·초기 조정 대기 시간(초)
 kubernetes_network_check_image: docker.io/library/busybox:1.37.0
+kubernetes_argocd_version: v3.5.7 # 공식 호환표의 Kubernetes 1.33~1.36 테스트 범위
 
 # 별도 LB VM 없이 CP 3대에 HAProxy와 Keepalived를 함께 설치합니다.
 kubernetes_manage_api_lb: true
