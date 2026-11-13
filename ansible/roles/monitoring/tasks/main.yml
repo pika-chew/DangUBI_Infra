@@ -1,5 +1,5 @@
 ---
-# Docker Compose로 Prometheus, Alertmanager, Grafana 배포 (Docker는 docker role에서 설치)
+# Docker Compose로 Prometheus, Loki, Alertmanager, Grafana 배포 (Docker는 docker role에서 설치)
 - name: Verify Grafana admin password is set
   ansible.builtin.assert:
     that:
@@ -19,9 +19,10 @@
   loop:
     - prometheus/rules
     - alertmanager
+    - loki
     - grafana/provisioning/datasources
 
-# 컨테이너 실행 사용자: Prometheus·Alertmanager = nobody(65534), Grafana = 472
+# 컨테이너 실행 사용자: Prometheus·Alertmanager = nobody(65534), Grafana = 472, Loki = 10001
 - name: Create data directories
   ansible.builtin.file:
     path: "{{ monitoring_data_dir }}/{{ item.name }}"
@@ -33,6 +34,7 @@
     - { name: prometheus, uid: '65534', gid: '65534' }
     - { name: alertmanager, uid: '65534', gid: '65534' }
     - { name: grafana, uid: '472', gid: '0' }
+    - { name: loki, uid: '10001', gid: '10001' }
 
 - name: Render Prometheus config
   ansible.builtin.template:
@@ -55,6 +57,13 @@
     dest: "{{ monitoring_dir }}/alertmanager/alertmanager.yml"
     mode: '0644'
   notify: Restart alertmanager
+
+- name: Render Loki config
+  ansible.builtin.template:
+    src: loki-config.yml.j2
+    dest: "{{ monitoring_dir }}/loki/loki-config.yml"
+    mode: '0644'
+  notify: Restart loki
 
 - name: Copy Grafana datasource provisioning
   ansible.builtin.copy:

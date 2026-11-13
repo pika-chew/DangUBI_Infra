@@ -1,0 +1,52 @@
+# Loki 단일 바이너리(monolithic) 구성. 모든 기능이 컨테이너 1개에서 돌고, 데이터는 VM 루트 디스크에 저장한다.
+
+# 팀 내부용이라 멀티 테넌트 인증을 끈다. 접근 제어는 보안 그룹으로 한다.
+auth_enabled: false
+
+server:
+  http_listen_port: 3100
+  grpc_listen_port: 9096
+  log_level: warn
+
+common:
+  path_prefix: /loki
+  # 노드 1개라 복제와 분산 링이 필요 없다
+  replication_factor: 1
+  instance_addr: 127.0.0.1
+  ring:
+    kvstore:
+      store: inmemory
+  storage:
+    filesystem:
+      chunks_directory: /loki/chunks
+      rules_directory: /loki/rules
+
+# 로그 색인 형식. from 날짜 이후 데이터에 적용된다. 바꿀 때는 기존 항목을 지우지 말고 새 날짜로 추가한다.
+schema_config:
+  configs:
+    - from: "2026-11-01"
+      store: tsdb
+      object_store: filesystem
+      schema: v13
+      index:
+        prefix: index_
+        period: 24h
+
+limits_config:
+  retention_period: {{ loki_retention_period }}
+  # 보관 기간보다 오래된 로그는 받지 않는다
+  reject_old_samples: true
+  reject_old_samples_max_age: {{ loki_retention_period }}
+  # 라벨이 너무 많으면 스트림이 쪼개져 느려진다. 고유값 라벨이 실수로 들어오는 것을 막는다
+  max_label_names_per_series: 15
+
+# 보관 기간이 지난 로그를 실제로 지우는 역할
+compactor:
+  working_directory: /loki/compactor
+  compaction_interval: 10m
+  retention_enabled: true
+  retention_delete_delay: 2h
+  delete_request_store: filesystem
+
+analytics:
+  reporting_enabled: false

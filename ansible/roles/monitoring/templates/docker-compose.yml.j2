@@ -39,6 +39,19 @@ services:
       timeout: 5s
       retries: 5
 
+  # 로그 저장소. Alloy가 /loki/api/v1/push로 로그를 보낸다
+  loki:
+    image: {{ loki_image }}
+    container_name: loki
+    restart: unless-stopped
+    command:
+      - -config.file=/etc/loki/loki-config.yml
+    ports:
+      - "{{ loki_port }}:3100"
+    volumes:
+      - {{ monitoring_dir }}/loki:/etc/loki:ro
+      - {{ monitoring_data_dir }}/loki:/loki
+
   grafana:
     image: {{ grafana_image }}
     container_name: grafana
@@ -53,6 +66,7 @@ services:
     depends_on:
       - prometheus
       - alertmanager
+      - loki
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:3000/api/health"]
       interval: 30s

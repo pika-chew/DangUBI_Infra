@@ -28,3 +28,9 @@ scrape_configs:
     static_configs:
       - targets: ["grafana:3000"]
         labels: *common_labels
+
+  # Loki가 죽으면 TargetDown 알림이 울린다
+  - job_name: loki
+    static_configs:
+      - targets: ["loki:3100"]
+        labels: *common_labels
