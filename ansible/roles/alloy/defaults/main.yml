@@ -24,5 +24,11 @@ alloy_scrape_jobs: []
 # (docker veth, OpenStack OVS의 tap/qvo/qvb/qbr)
 alloy_netdev_device_exclude: "^(veth.*|tap.*|qvo.*|qvb.*|qbr.*)$"
 
+# 로그를 보낼 Loki push 주소. 지정한 그룹만 로그를 수집한다 (inventory/group_vars에서 지정)
+# alloy_loki_url: http://<모니터링 VM>:3100/loki/api/v1/push
+
+# 수집할 Kolla 서비스 로그 폴더 (/var/log/kolla/<이름>/*.log). 호스트에 없는 폴더는 무시된다
+alloy_kolla_log_services: []
+
 # Alloy 디버깅 UI. 외부에 노출하지 않도록 localhost에만 바인딩
 alloy_listen_addr: 127.0.0.1:12345

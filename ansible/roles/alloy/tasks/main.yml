@@ -49,6 +49,27 @@
     update_cache: true
   notify: Restart alloy
 
+# /var/log/kolla는 Docker 볼륨(/var/lib/docker/volumes/kolla_logs/_data)을 가리키는 링크다.
+# /var/lib/docker(drwx--x---)를 alloy 사용자가 지나갈 수 있도록 통과(x) 권한만 준다. 폴더 목록은 볼 수 없다.
+- name: Install acl package
+  ansible.builtin.apt:
+    name: acl
+    state: present
+  when: alloy_kolla_log_services | length > 0
+
+- name: Read ACL of Docker root
+  ansible.builtin.command: getfacl -p /var/lib/docker
+  register: alloy_docker_root_acl
+  changed_when: false
+  when: alloy_kolla_log_services | length > 0
+
+- name: Allow alloy to traverse Docker root for Kolla logs
+  ansible.builtin.command: setfacl -m u:alloy:x /var/lib/docker
+  when:
+    - alloy_kolla_log_services | length > 0
+    - "'user:alloy:--x' not in alloy_docker_root_acl.stdout"
+  notify: Restart alloy
+
 - name: Render Alloy service options
   ansible.builtin.template:
     src: alloy.default.j2
