@@ -2,3 +2,25 @@
 alloy_cluster: openstack
 # 같은 내부망(10.20.0.0/24)이므로 모니터링 VM Floating IP의 Prometheus로 직접 전송
 alloy_remote_write_url: http://10.20.0.140:9090/api/v1/write
+# 로그도 같은 경로로 Loki에 직접 전송. 보안 그룹에서 물리 노드 /32 → 3100 허용
+alloy_loki_url: http://10.20.0.140:3100/loki/api/v1/push
+
+# 수집할 Kolla 서비스 로그. 컴퓨트 노드에 없는 폴더(keystone 등)는 파일이 없어 무시된다
+# 제외: ansible.log·config-validate(배포 기록), fluentd(미사용), cron(로테이션 기록), prometheus(exporter 자체 로그)
+alloy_kolla_log_services:
+  # OpenStack 서비스
+  - nova
+  - neutron
+  - keystone
+  - glance
+  - cinder
+  - placement
+  - heat
+  - horizon
+  # 기반 서비스
+  - mariadb
+  - rabbitmq
+  - haproxy
+  - proxysql
+  - openvswitch
+  - libvirt
