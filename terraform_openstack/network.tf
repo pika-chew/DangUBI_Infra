@@ -20,6 +20,15 @@ variable "neutron" {
       jenkins-port       = string
       vault              = string
     })
+    k8s_port_ids = object({
+      k8s-cp1-port     = string
+      k8s-cp2-port     = string
+      k8s-cp3-port     = string
+      k8s-worker1-port = string
+      k8s-worker2-port = string
+      k8s-worker3-port = string
+      k8s-worker4-port = string
+    })
   })
 }
 
@@ -44,5 +53,11 @@ import {
 import {
   for_each = var.neutron.ops_port_ids
   to       = module.network.openstack_networking_port_v2.ops_ports[each.key]
+  id       = each.value
+}
+
+import {
+  for_each = var.neutron.k8s_port_ids
+  to       = module.network.openstack_networking_port_v2.k8s_ports[each.key]
   id       = each.value
 }
