@@ -18,10 +18,23 @@ listener "tcp" {
   tls_min_version = "tls12"
 }
 
+# 메트릭 수집 전용 listener. 같은 VM의 Alloy만 접근하도록 127.0.0.1에만 연다
+# /v1/sys/metrics는 원래 토큰이 필요하지만, 이 listener에서만 토큰 없이 허용한다 (비밀값은 노출되지 않음)
+listener "tcp" {
+  address         = "127.0.0.1:{{ hashicorp_vault_metrics_port }}"
+  tls_cert_file   = "{{ hashicorp_vault_tls_cert }}"
+  tls_key_file    = "{{ hashicorp_vault_tls_key }}"
+  tls_min_version = "tls12"
+
+  telemetry {
+    unauthenticated_metrics_access = true
+  }
+}
+
 api_addr     = "https://{{ hashicorp_vault_private_ip }}:{{ hashicorp_vault_api_port }}"
 cluster_addr = "https://{{ hashicorp_vault_private_ip }}:{{ hashicorp_vault_cluster_port }}"
 
-# /v1/sys/metrics?format=prometheus. 수집 시 토큰 필요
+# /v1/sys/metrics?format=prometheus. 8200에서는 토큰 필요, 메트릭 전용 listener(127.0.0.1)에서는 토큰 없이 허용
 telemetry {
   prometheus_retention_time = "24h"
   disable_hostname          = true

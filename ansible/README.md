@@ -95,6 +95,7 @@ ansible-playbook playbooks/monitoring.yml --ask-vault-pass
   - `base.yml`: Watchdog, TargetDown
   - `node.yml`: 노드 디스크·메모리, Alloy 데이터 끊김 (물리 노드 + K8s 노드 공통)
   - `kubernetes.yml`: 노드 NotReady, Pod·Deployment·Job 상태, etcd, API 서버, CoreDNS
+  - `vault.yml`: Vault sealed 또는 응답 없음
   - 배포 전 문법 검사: `promtool check rules` (prom/prometheus 이미지에 포함)
 - Grafana 데이터소스(Prometheus, Alertmanager): `roles/monitoring/files/grafana/provisioning/` 로 자동 등록
 - Prometheus는 `--web.enable-remote-write-receiver`로 Alloy의 remote_write를 받음
@@ -105,12 +106,14 @@ ansible-playbook playbooks/monitoring.yml --ask-vault-pass
 
 ### Alloy
 
-모니터링 VM(자기 감시)과 OpenStack 물리 노드에 Alloy를 설치합니다.
+모니터링 VM(자기 감시), OpenStack 물리 노드, 단독 VM(jenkins-vm, vault-vm)에 Alloy를 설치합니다.
 
-| 그룹 | 호스트 | `cluster` 라벨 | 전송 주소 |
-|---|---|---|---|
-| `monitoring` | observability-vm | `observability-vm` | `localhost:9090` |
-| `openstack_nodes` | os-ctl1~3, os-cmp1 | `openstack` | `10.20.0.140:9090` (같은 내부망이라 직접 전송) |
+| 그룹 | 호스트 | `cluster` 라벨 | 전송 주소 (메트릭 9090 / 로그 3100) | 수집 로그 |
+|---|---|---|---|---|
+| `monitoring` | observability-vm | `observability-vm` | `localhost` | journald: docker·alloy·ssh, 컨테이너 4개 |
+| `openstack_nodes` | os-ctl1~3, os-cmp1 | `openstack` | `10.20.0.140` (같은 내부망이라 직접 전송) | Kolla 서비스 로그 파일 |
+| `jenkins` | jenkins-vm | `jenkins-vm` | `172.16.20.20` (사설 IP) | journald: docker·alloy·ssh, jenkins 컨테이너 |
+| `vault` | vault-vm | `vault-vm` | `172.16.20.20` (사설 IP) | journald: vault·alloy·ssh |
 
 ```bash
 # 최초 1회: jenkins-vm의 SSH 키를 물리 노드에 등록
@@ -119,6 +122,7 @@ ssh-copy-id pika1@10.20.0.2   # pika2@10.20.0.3, pika3@10.20.0.4, hong@10.20.0.5
 # 물리 노드는 sudo 비밀번호가 필요하므로 --ask-become-pass
 ansible-playbook playbooks/alloy.yml --limit openstack_nodes --ask-become-pass
 ansible-playbook playbooks/alloy.yml --limit monitoring --ask-vault-pass
+ansible-playbook playbooks/alloy.yml --limit jenkins,vault
 ```
 `alloy.yml`: Grafana 공식 APT 저장소로 Alloy를 설치하고 systemd 서비스로 실행
 
@@ -130,6 +134,15 @@ ansible-playbook playbooks/alloy.yml --limit monitoring --ask-vault-pass
   - OpenStack 노드는 Kolla-Ansible이 띄운 exporter를 수집 (아래 표)
 - 네트워크 메트릭에서 가상 인터페이스(docker veth, OpenStack tap/qvo/qvb/qbr) 제외: `alloy_netdev_device_exclude`
 - 디버깅 UI: `127.0.0.1:12345` (외부 미노출, `ssh -L 12345:localhost:12345`로 접속)
+- `instance` 라벨은 기본이 OS 호스트명. VM 이름과 다르면 `alloy_instance`로 지정 (vault-vm)
+- 단독 VM의 서비스 메트릭: vault-vm은 Vault `/v1/sys/metrics`, jenkins-vm은 Prometheus 플러그인 `/prometheus/` (`alloy_scrape_jobs`)
+  - Jenkins 플러그인은 누적 값(카운터) 이름 끝에 `_total`을 붙임. 예: `default_jenkins_builds_success_build_count_total`, `default_jenkins_builds_total_build_count_total`
+  - Vault audit 로그는 Alloy가 `detected_level`을 직접 붙임 (`error` 값이 없으면 info, 있으면 warn). JSON의 `error` 필드 이름 때문에 Loki가 error로 잘못 분류하는 것을 막기 위함
+- 로그: `alloy_loki_url`을 지정한 그룹만 수집. 라벨 `env`·`cluster`·`node`
+  - Kolla 로그 파일: `alloy_kolla_log_services`. 라벨 `service`·`component`
+  - journald: systemd 서비스는 `alloy_journal_units`(라벨 `unit`), 컨테이너는 `alloy_journal_containers`(라벨 `container`)
+  - 그 밖의 로그 파일: `alloy_file_logs` (경로 + 라벨). vault-vm의 audit 로그
+  - 컨테이너 로그는 compose의 `logging.driver: journald`로 journal에 쌓임 (monitoring, jenkins role). `docker logs`도 그대로 사용 가능
 
 ### Kolla-Ansible exporter (OpenStack 서비스 메트릭)
 
@@ -208,7 +221,28 @@ vault status                      # Sealed false
 
 - unseal key는 팀원에게 나눠 보관하고, Git·Slack·Ansible Vault 파일에 함께 두지 않는다
 - root token은 초기 설정(인증 방식·정책 생성) 후 `vault token revoke`로 폐기하고, 필요할 때 `vault operator generate-root`로 다시 발급
-- VM 재부팅이나 서비스 재시작 뒤에는 `vault operator unseal`을 다시 실행해야 함
+- VM 재부팅이나 서비스 재시작 뒤에는 `vault operator unseal`을 다시 실행해야 함 (잊으면 `VaultSealedOrDown` 알림)
+
+### 메트릭
+
+- 메트릭 전용 listener `127.0.0.1:8210`에서 `/v1/sys/metrics`를 토큰 없이 허용 (외부 8200 listener는 그대로 토큰 필요)
+- 같은 VM의 Alloy가 수집. 인증서 검증을 위해 role이 Vault CA를 시스템 신뢰 목록에 등록
+- listener를 바꾸면 Vault가 재시작되므로 **배포 후 unseal 필요**
+
+### audit 로그 (수동 1회)
+
+누가 언제 어떤 경로에 접근했는지 남깁니다. 비밀값은 HMAC으로 가려져 기록됩니다.
+
+```bash
+ssh ubuntu@10.20.0.170
+vault login                       # sys/audit 권한이 있는 토큰 (root 또는 관리자)
+vault audit enable file file_path=/var/log/vault/audit.log mode=0640
+vault audit list
+```
+
+- 폴더 `/var/log/vault`는 role이 `vault:adm 2750`으로 만듦. Alloy(adm 그룹)가 읽어 Loki로 전송 (`{service="vault", component="audit"}`)
+- logrotate로 매일 로테이션, 7일 보관 (`/etc/logrotate.d/vault-audit`). 로테이션 후 SIGHUP으로 파일을 다시 열며 sealed 되지 않음
+- **audit 파일에 쓰지 못하면 Vault가 요청을 거부**하므로 디스크 여유를 확인
 
 ---
 <br>

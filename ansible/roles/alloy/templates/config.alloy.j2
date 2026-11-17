@@ -7,8 +7,29 @@ prometheus.exporter.unix "host" {
   }
 }
 
+{% if alloy_instance is defined %}
+// instance 라벨은 기본이 OS 호스트명이다. VM 이름과 다르면 지정한 이름으로 바꾼다.
+discovery.relabel "host" {
+  targets = prometheus.exporter.unix.host.targets
+
+  rule {
+    target_label = "instance"
+    replacement  = "{{ alloy_instance }}"
+  }
+}
+
+discovery.relabel "alloy" {
+  targets = prometheus.exporter.self.alloy.targets
+
+  rule {
+    target_label = "instance"
+    replacement  = "{{ alloy_instance }}"
+  }
+}
+
+{% endif %}
 prometheus.scrape "host" {
-  targets         = prometheus.exporter.unix.host.targets
+  targets         = {{ 'discovery.relabel.host.output' if alloy_instance is defined else 'prometheus.exporter.unix.host.targets' }}
   forward_to      = [prometheus.remote_write.default.receiver]
   scrape_interval = "{{ alloy_scrape_interval }}"
 }
@@ -17,7 +38,7 @@ prometheus.scrape "host" {
 prometheus.exporter.self "alloy" { }
 
 prometheus.scrape "alloy" {
-  targets         = prometheus.exporter.self.alloy.targets
+  targets         = {{ 'discovery.relabel.alloy.output' if alloy_instance is defined else 'prometheus.exporter.self.alloy.targets' }}
   forward_to      = [prometheus.remote_write.default.receiver]
   scrape_interval = "{{ alloy_scrape_interval }}"
 }
@@ -35,6 +56,19 @@ prometheus.scrape "{{ job.name }}" {
   scrape_interval = "{{ job.interval | default(alloy_scrape_interval) }}"
 {% if job.timeout is defined %}
   scrape_timeout  = "{{ job.timeout }}"
+{% endif %}
+{% if job.scheme is defined %}
+  scheme          = "{{ job.scheme }}"
+{% endif %}
+{% if job.metrics_path is defined %}
+  metrics_path    = "{{ job.metrics_path }}"
+{% endif %}
+{% if job.params is defined %}
+  params          = {
+{% for key, values in job.params.items() %}
+    "{{ key }}" = [{% for value in values %}"{{ value }}"{{ ', ' if not loop.last }}{% endfor %}],
+{% endfor %}
+  }
 {% endif %}
 }
 
@@ -56,7 +90,11 @@ prometheus.remote_write "default" {
     cluster = "{{ alloy_cluster }}",
   }
 }
-{% if alloy_loki_url is defined and alloy_kolla_log_services | length > 0 %}
+{% set alloy_kolla_logs = alloy_kolla_log_services | length > 0 %}
+{% set alloy_journal_logs = (alloy_journal_units | length > 0) or (alloy_journal_containers | length > 0) %}
+{% set alloy_file_log_targets = alloy_file_logs | length > 0 %}
+{% if alloy_loki_url is defined and (alloy_kolla_logs or alloy_journal_logs or alloy_file_log_targets) %}
+{% if alloy_kolla_logs %}
 
 // ---------- Kolla 서비스 로그 → Loki ----------
 // 서비스별 현재 로그 파일(*.log)만 읽는다. 로테이션된 .1·.gz는 패턴에 걸리지 않는다.
@@ -131,6 +169,119 @@ loki.process "kolla" {
     action_on_failure = "skip"
   }
 }
+{% endif %}
+{% if alloy_journal_logs %}
+
+// ---------- systemd 서비스·Docker 컨테이너 로그(journald) → Loki ----------
+// 컨테이너 로그는 compose의 logging driver(journald)로 journal에 함께 쌓인다.
+// alloy 사용자는 systemd-journal 그룹이라 권한을 따로 줄 필요가 없다.
+loki.relabel "journal" {
+  forward_to = []
+
+  // 목록에 있는 서비스와 컨테이너만 남긴다. "유닛;컨테이너 이름" 형태로 비교한다.
+  // 컨테이너 로그는 dockerd가 보내므로 유닛이 docker.service로 찍힌다.
+  // 그래서 서비스는 컨테이너 이름이 비어 있는 줄만 고른다 (docker.service 자체 로그).
+  rule {
+    source_labels = ["__journal__systemd_unit", "__journal_container_name"]
+    separator     = ";"
+    regex         = `{% if alloy_journal_units %}({{ alloy_journal_units | map('regex_escape') | join('|') }});{% endif %}{% if alloy_journal_units and alloy_journal_containers %}|{% endif %}{% if alloy_journal_containers %}.*;({{ alloy_journal_containers | map('regex_escape') | join('|') }}){% endif %}`
+    action        = "keep"
+  }
+
+  rule {
+    source_labels = ["__journal__systemd_unit"]
+    target_label  = "unit"
+  }
+
+  // 컨테이너 줄은 unit(docker.service)을 지우고 container 라벨만 남긴다.
+  rule {
+    source_labels = ["__journal_container_name"]
+    regex         = ".+"
+    target_label  = "unit"
+    replacement   = ""
+  }
+
+  rule {
+    source_labels = ["__journal_container_name"]
+    target_label  = "container"
+  }
+}
+
+// 시간은 journal에 기록된 시간을 그대로 쓴다. 읽은 위치는 Alloy 데이터 폴더에 저장된다.
+loki.source.journal "system" {
+  relabel_rules = loki.relabel.journal.rules
+  forward_to    = [loki.process.journal.receiver]
+}
+
+loki.process "journal" {
+  forward_to = [loki.write.default.receiver]
+{% if 'jenkins' in alloy_journal_containers %}
+
+  // Jenkins 로그는 날짜로 시작하고, 예외(Caused by, at ...)는 다음 줄로 이어진다.
+  // 날짜로 시작하지 않는 줄은 앞 로그에 붙인다.
+  stage.match {
+    selector = "{container=\"jenkins\"}"
+
+    stage.multiline {
+      firstline     = `^\d{4}-\d{2}-\d{2} `
+      max_wait_time = "3s"
+    }
+  }
+{% endif %}
+}
+{% endif %}
+{% if alloy_file_log_targets %}
+
+// ---------- 그 밖의 로그 파일 → Loki ----------
+// journal에 남지 않고 파일로만 쌓이는 로그 (예: Vault audit 로그)
+local.file_match "files" {
+  path_targets = [
+{% for file in alloy_file_logs %}
+    {
+      "__path__" = "{{ file.path }}",
+{% for key, value in file.labels.items() %}
+      "{{ key }}" = "{{ value }}",
+{% endfor %}
+    },
+{% endfor %}
+  ]
+}
+
+loki.source.file "files" {
+  targets    = local.file_match.files.targets
+  forward_to = [loki.process.files.receiver]
+}
+
+loki.process "files" {
+  forward_to = [loki.write.default.receiver]
+
+  // 파일 경로 라벨은 지정한 라벨(service 등)로 대신하므로 지운다.
+  stage.label_drop {
+    values = ["filename"]
+  }
+
+  // Vault audit 로그는 JSON 안에 "error" 필드 이름이 있어 Loki가 레벨을 error로 잘못 판단한다.
+  // 레벨을 직접 붙인다: error 값이 비어 있으면 info, 있으면 warn (권한 거부 같은 요청 실패)
+  // detected_level을 structured metadata로 직접 붙인다. 이 값이 있으면 Loki는 내용으로 레벨을 추측하지 않는다.
+  stage.match {
+    selector = "{service=\"vault\", component=\"audit\"}"
+
+    stage.json {
+      expressions = { audit_error = "error" }
+    }
+
+    stage.template {
+      source   = "detected_level"
+      template = {% raw %}"{{ if .audit_error }}warn{{ else }}info{{ end }}"{% endraw %}
+
+    }
+
+    stage.structured_metadata {
+      values = { detected_level = "" }
+    }
+  }
+}
+{% endif %}
 
 loki.write "default" {
   endpoint {

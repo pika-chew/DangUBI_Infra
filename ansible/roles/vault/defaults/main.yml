@@ -9,6 +9,13 @@ hashicorp_vault_version: ""
 # hashicorp_vault_private_ip: 172.16.20.30
 hashicorp_vault_api_port: 8200
 hashicorp_vault_cluster_port: 8201
+# 메트릭 수집 전용 listener (127.0.0.1에만 열림, 토큰 없이 /v1/sys/metrics 허용)
+hashicorp_vault_metrics_port: 8210
+
+# audit 로그 폴더. 감사 기능 활성화(vault audit enable)는 root 권한 토큰이 필요해 수동으로 진행 (README 참고)
+# 그룹 adm: Alloy(adm 그룹)가 읽어서 Loki로 보냄
+hashicorp_vault_audit_dir: /var/log/vault
+hashicorp_vault_audit_rotate_days: 7
 
 # Raft(integrated storage) 데이터 경로. 저장소 데이터는 VM 루트 디스크에 둔다
 hashicorp_vault_data_dir: /opt/vault/data

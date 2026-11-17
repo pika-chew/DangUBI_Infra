@@ -1,7 +1,7 @@
 ---
 # 그룹 하나만 적용할 때는 --limit openstack_nodes 처럼 지정
 - name: Deploy Grafana Alloy
-  hosts: monitoring:openstack_nodes
+  hosts: monitoring:openstack_nodes:jenkins:vault
   become: true
 
   roles:
