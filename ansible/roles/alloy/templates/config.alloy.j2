@@ -259,6 +259,27 @@ loki.process "files" {
   stage.label_drop {
     values = ["filename"]
   }
+
+  // Vault audit 로그는 JSON 안에 "error" 필드 이름이 있어 Loki가 레벨을 error로 잘못 판단한다.
+  // 레벨을 직접 붙인다: error 값이 비어 있으면 info, 있으면 warn (권한 거부 같은 요청 실패)
+  // 라벨이 아닌 structured metadata로 붙이며, Loki는 이 값을 detected_level로 쓴다.
+  stage.match {
+    selector = "{service=\"vault\", component=\"audit\"}"
+
+    stage.json {
+      expressions = { audit_error = "error" }
+    }
+
+    stage.template {
+      source   = "level"
+      template = {% raw %}"{{ if .audit_error }}warn{{ else }}info{{ end }}"{% endraw %}
+
+    }
+
+    stage.structured_metadata {
+      values = { level = "" }
+    }
+  }
 }
 {% endif %}
 

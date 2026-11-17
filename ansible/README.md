@@ -136,6 +136,8 @@ ansible-playbook playbooks/alloy.yml --limit jenkins,vault
 - 디버깅 UI: `127.0.0.1:12345` (외부 미노출, `ssh -L 12345:localhost:12345`로 접속)
 - `instance` 라벨은 기본이 OS 호스트명. VM 이름과 다르면 `alloy_instance`로 지정 (vault-vm)
 - 단독 VM의 서비스 메트릭: vault-vm은 Vault `/v1/sys/metrics`, jenkins-vm은 Prometheus 플러그인 `/prometheus/` (`alloy_scrape_jobs`)
+  - Jenkins 플러그인은 누적 값(카운터) 이름 끝에 `_total`을 붙임. 예: `default_jenkins_builds_success_build_count_total`, `default_jenkins_builds_total_build_count_total`
+  - Vault audit 로그는 Alloy가 레벨을 직접 붙임 (`error` 값이 없으면 info, 있으면 warn). JSON의 `error` 필드 이름 때문에 Loki가 error로 잘못 분류하는 것을 막기 위함
 - 로그: `alloy_loki_url`을 지정한 그룹만 수집. 라벨 `env`·`cluster`·`node`
   - Kolla 로그 파일: `alloy_kolla_log_services`. 라벨 `service`·`component`
   - journald: systemd 서비스는 `alloy_journal_units`(라벨 `unit`), 컨테이너는 `alloy_journal_containers`(라벨 `container`)
