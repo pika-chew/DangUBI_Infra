@@ -36,13 +36,26 @@ variable "jenkins" {
   })
 }
 
+variable "k8s_control_plane" {
+  description = "기존 Kubernetes 컨트롤 플레인 인스턴스와 공통 Flavor의 UUID입니다."
+  type = object({
+    flavor_id = string
+    instance_ids = object({
+      k8s-control-1 = string
+      k8s-control-2 = string
+      k8s-control-3 = string
+    })
+  })
+}
+
 module "compute" {
   source = "./modules/compute"
 
-  ops_image_id            = var.observability.image_id
+  ubuntu_image_id         = var.observability.image_id
   observability_flavor_id = var.observability.flavor_id
   vault_flavor_id         = var.vault.flavor_id
   jenkins_flavor_id       = var.jenkins.flavor_id
+  k8s_control_flavor_id   = var.k8s_control_plane.flavor_id
 }
 
 import {
@@ -58,4 +71,10 @@ import {
 import {
   to = module.compute.openstack_compute_instance_v2.jenkins_vm
   id = var.jenkins.instance_id
+}
+
+import {
+  for_each = var.k8s_control_plane.instance_ids
+  to       = module.compute.openstack_compute_instance_v2.k8s_control_plane[each.key]
+  id       = each.value
 }
