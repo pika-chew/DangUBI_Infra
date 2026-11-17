@@ -4,6 +4,9 @@ services:
     image: {{ jenkins_image }}
     container_name: jenkins
     restart: unless-stopped
+    # 로그를 journal에 남겨 Alloy가 수집 (docker logs도 그대로 사용 가능)
+    logging:
+      driver: journald
     ports:
       - "8080:8080"
     environment:

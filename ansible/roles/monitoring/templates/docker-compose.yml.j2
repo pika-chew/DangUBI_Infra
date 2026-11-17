@@ -1,8 +1,13 @@
+# 모든 컨테이너 로그를 journal에 남겨 Alloy가 수집 (docker logs도 그대로 사용 가능)
+x-logging: &journald
+  driver: journald
+
 services:
   prometheus:
     image: {{ prometheus_image }}
     container_name: prometheus
     restart: unless-stopped
+    logging: *journald
     command:
       - --config.file=/etc/prometheus/prometheus.yml
       - --storage.tsdb.path=/prometheus
@@ -25,6 +30,7 @@ services:
     image: {{ alertmanager_image }}
     container_name: alertmanager
     restart: unless-stopped
+    logging: *journald
     command:
       - --config.file=/etc/alertmanager/alertmanager.yml
       - --storage.path=/alertmanager
@@ -44,6 +50,7 @@ services:
     image: {{ loki_image }}
     container_name: loki
     restart: unless-stopped
+    logging: *journald
     command:
       - -config.file=/etc/loki/loki-config.yml
     ports:
@@ -56,6 +63,7 @@ services:
     image: {{ grafana_image }}
     container_name: grafana
     restart: unless-stopped
+    logging: *journald
     env_file:
       - {{ monitoring_dir }}/grafana/grafana.env
     ports:

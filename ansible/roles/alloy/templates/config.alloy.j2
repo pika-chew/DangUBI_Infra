@@ -56,7 +56,10 @@ prometheus.remote_write "default" {
     cluster = "{{ alloy_cluster }}",
   }
 }
-{% if alloy_loki_url is defined and alloy_kolla_log_services | length > 0 %}
+{% set alloy_kolla_logs = alloy_kolla_log_services | length > 0 %}
+{% set alloy_journal_logs = (alloy_journal_units | length > 0) or (alloy_journal_containers | length > 0) %}
+{% if alloy_loki_url is defined and (alloy_kolla_logs or alloy_journal_logs) %}
+{% if alloy_kolla_logs %}
 
 // ---------- Kolla 서비스 로그 → Loki ----------
 // 서비스별 현재 로그 파일(*.log)만 읽는다. 로테이션된 .1·.gz는 패턴에 걸리지 않는다.
@@ -131,6 +134,67 @@ loki.process "kolla" {
     action_on_failure = "skip"
   }
 }
+{% endif %}
+{% if alloy_journal_logs %}
+
+// ---------- systemd 서비스·Docker 컨테이너 로그(journald) → Loki ----------
+// 컨테이너 로그는 compose의 logging driver(journald)로 journal에 함께 쌓인다.
+// alloy 사용자는 systemd-journal 그룹이라 권한을 따로 줄 필요가 없다.
+loki.relabel "journal" {
+  forward_to = []
+
+  // 목록에 있는 서비스와 컨테이너만 남긴다. "유닛;컨테이너 이름" 형태로 비교한다.
+  // 컨테이너 로그는 dockerd가 보내므로 유닛이 docker.service로 찍힌다.
+  // 그래서 서비스는 컨테이너 이름이 비어 있는 줄만 고른다 (docker.service 자체 로그).
+  rule {
+    source_labels = ["__journal__systemd_unit", "__journal_container_name"]
+    separator     = ";"
+    regex         = `{% if alloy_journal_units %}({{ alloy_journal_units | map('regex_escape') | join('|') }});{% endif %}{% if alloy_journal_units and alloy_journal_containers %}|{% endif %}{% if alloy_journal_containers %}.*;({{ alloy_journal_containers | map('regex_escape') | join('|') }}){% endif %}`
+    action        = "keep"
+  }
+
+  rule {
+    source_labels = ["__journal__systemd_unit"]
+    target_label  = "unit"
+  }
+
+  // 컨테이너 줄은 unit(docker.service)을 지우고 container 라벨만 남긴다.
+  rule {
+    source_labels = ["__journal_container_name"]
+    regex         = ".+"
+    target_label  = "unit"
+    replacement   = ""
+  }
+
+  rule {
+    source_labels = ["__journal_container_name"]
+    target_label  = "container"
+  }
+}
+
+// 시간은 journal에 기록된 시간을 그대로 쓴다. 읽은 위치는 Alloy 데이터 폴더에 저장된다.
+loki.source.journal "system" {
+  relabel_rules = loki.relabel.journal.rules
+  forward_to    = [loki.process.journal.receiver]
+}
+
+loki.process "journal" {
+  forward_to = [loki.write.default.receiver]
+{% if 'jenkins' in alloy_journal_containers %}
+
+  // Jenkins 로그는 날짜로 시작하고, 예외(Caused by, at ...)는 다음 줄로 이어진다.
+  // 날짜로 시작하지 않는 줄은 앞 로그에 붙인다.
+  stage.match {
+    selector = "{container=\"jenkins\"}"
+
+    stage.multiline {
+      firstline     = `^\d{4}-\d{2}-\d{2} `
+      max_wait_time = "3s"
+    }
+  }
+{% endif %}
+}
+{% endif %}
 
 loki.write "default" {
   endpoint {

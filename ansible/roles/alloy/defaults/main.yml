@@ -30,5 +30,10 @@ alloy_netdev_device_exclude: "^(veth.*|tap.*|qvo.*|qvb.*|qbr.*)$"
 # 수집할 Kolla 서비스 로그 폴더 (/var/log/kolla/<이름>/*.log). 호스트에 없는 폴더는 무시된다
 alloy_kolla_log_services: []
 
+# journald에서 수집할 systemd 서비스(유닛 이름)와 Docker 컨테이너(컨테이너 이름)
+# 컨테이너는 compose에서 logging driver를 journald로 지정해야 journal에 쌓인다
+alloy_journal_units: []
+alloy_journal_containers: []
+
 # Alloy 디버깅 UI. 외부에 노출하지 않도록 localhost에만 바인딩
 alloy_listen_addr: 127.0.0.1:12345

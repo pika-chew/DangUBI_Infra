@@ -1,0 +1,11 @@
+---
+# jenkins-vm: 사설 IP 172.16.20.10 / Floating IP 10.20.0.130
+
+# Alloy: 같은 사설망이므로 모니터링 VM 사설 IP로 전송 (보안 그룹에서 172.16.20.10/32 → 9090, 3100 허용)
+alloy_cluster: jenkins-vm
+alloy_remote_write_url: http://172.16.20.20:9090/api/v1/write
+alloy_loki_url: http://172.16.20.20:3100/loki/api/v1/push
+
+# 컨테이너는 roles/jenkins의 docker-compose에서 logging driver를 journald로 지정
+alloy_journal_units: [docker.service, alloy.service, ssh.service]
+alloy_journal_containers: [jenkins]

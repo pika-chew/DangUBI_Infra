@@ -105,12 +105,14 @@ ansible-playbook playbooks/monitoring.yml --ask-vault-pass
 
 ### Alloy
 
-모니터링 VM(자기 감시)과 OpenStack 물리 노드에 Alloy를 설치합니다.
+모니터링 VM(자기 감시), OpenStack 물리 노드, 단독 VM(jenkins-vm, vault-vm)에 Alloy를 설치합니다.
 
-| 그룹 | 호스트 | `cluster` 라벨 | 전송 주소 |
-|---|---|---|---|
-| `monitoring` | observability-vm | `observability-vm` | `localhost:9090` |
-| `openstack_nodes` | os-ctl1~3, os-cmp1 | `openstack` | `10.20.0.140:9090` (같은 내부망이라 직접 전송) |
+| 그룹 | 호스트 | `cluster` 라벨 | 전송 주소 (메트릭 9090 / 로그 3100) | 수집 로그 |
+|---|---|---|---|---|
+| `monitoring` | observability-vm | `observability-vm` | `localhost` | journald: docker·alloy·ssh, 컨테이너 4개 |
+| `openstack_nodes` | os-ctl1~3, os-cmp1 | `openstack` | `10.20.0.140` (같은 내부망이라 직접 전송) | Kolla 서비스 로그 파일 |
+| `jenkins` | jenkins-vm | `jenkins-vm` | `172.16.20.20` (사설 IP) | journald: docker·alloy·ssh, jenkins 컨테이너 |
+| `vault` | vault-vm | `vault-vm` | `172.16.20.20` (사설 IP) | journald: vault·alloy·ssh |
 
 ```bash
 # 최초 1회: jenkins-vm의 SSH 키를 물리 노드에 등록
@@ -119,6 +121,7 @@ ssh-copy-id pika1@10.20.0.2   # pika2@10.20.0.3, pika3@10.20.0.4, hong@10.20.0.5
 # 물리 노드는 sudo 비밀번호가 필요하므로 --ask-become-pass
 ansible-playbook playbooks/alloy.yml --limit openstack_nodes --ask-become-pass
 ansible-playbook playbooks/alloy.yml --limit monitoring --ask-vault-pass
+ansible-playbook playbooks/alloy.yml --limit jenkins,vault
 ```
 `alloy.yml`: Grafana 공식 APT 저장소로 Alloy를 설치하고 systemd 서비스로 실행
 
@@ -130,6 +133,10 @@ ansible-playbook playbooks/alloy.yml --limit monitoring --ask-vault-pass
   - OpenStack 노드는 Kolla-Ansible이 띄운 exporter를 수집 (아래 표)
 - 네트워크 메트릭에서 가상 인터페이스(docker veth, OpenStack tap/qvo/qvb/qbr) 제외: `alloy_netdev_device_exclude`
 - 디버깅 UI: `127.0.0.1:12345` (외부 미노출, `ssh -L 12345:localhost:12345`로 접속)
+- 로그: `alloy_loki_url`을 지정한 그룹만 수집. 라벨 `env`·`cluster`·`node`
+  - Kolla 로그 파일: `alloy_kolla_log_services`. 라벨 `service`·`component`
+  - journald: systemd 서비스는 `alloy_journal_units`(라벨 `unit`), 컨테이너는 `alloy_journal_containers`(라벨 `container`)
+  - 컨테이너 로그는 compose의 `logging.driver: journald`로 journal에 쌓임 (monitoring, jenkins role). `docker logs`도 그대로 사용 가능
 
 ### Kolla-Ansible exporter (OpenStack 서비스 메트릭)
 

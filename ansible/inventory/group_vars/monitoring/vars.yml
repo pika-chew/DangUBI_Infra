@@ -6,3 +6,8 @@ alertmanager_slack_webhook_url: "{{ vault_alertmanager_slack_webhook_url }}"
 # 자기 감시 Alloy: 같은 VM이므로 Nginx를 거치지 않고 Prometheus로 직접 전송
 alloy_cluster: observability-vm
 alloy_remote_write_url: http://localhost:9090/api/v1/write
+alloy_loki_url: http://localhost:3100/loki/api/v1/push
+
+# 컨테이너는 roles/monitoring의 docker-compose에서 logging driver를 journald로 지정
+alloy_journal_units: [docker.service, alloy.service, ssh.service]
+alloy_journal_containers: [prometheus, alertmanager, loki, grafana]
