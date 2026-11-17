@@ -17,6 +17,7 @@ locals {
     }
   }
 
+  # 각 포트에는 공통 SSH 그룹과 서비스별 그룹을 적용합니다.
   ops_port_security_group_ids = {
     for name, port in local.ops_ports : name => toset([
       data.openstack_networking_secgroup_v2.ops["sg-ssh"].id,
@@ -25,6 +26,7 @@ locals {
   }
 }
 
+# 같은 이름의 그룹이 다른 프로젝트에도 있을 수 있어 UBI 프로젝트 안에서 조회합니다.
 data "openstack_networking_secgroup_v2" "ops" {
   for_each = toset(concat(["sg-ssh"], [for port in values(local.ops_ports) : port.security_group]))
 
@@ -48,7 +50,9 @@ resource "openstack_networking_port_v2" "ops_ports" {
   }
 
   lifecycle {
-    # Provider 3.4 records these values in all_fixed_ips and all_security_group_ids during import.
+    # OpenStack Provider 3.4는 import 시 실제 고정 IP와 보안 그룹을
+    # all_fixed_ips와 all_security_group_ids에 기록합니다.
+    # 기존 포트에 값을 다시 쓰는 대신 아래 조건으로 코드와 일치하는지 확인합니다.
     ignore_changes = [fixed_ip, security_group_ids]
 
     postcondition {
