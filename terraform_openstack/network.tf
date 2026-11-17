@@ -1,5 +1,5 @@
 variable "neutron" {
-  description = "기존 Neutron 네트워크와 서브넷의 UUID 및 소유 프로젝트 ID입니다."
+  description = "기존 Neutron 네트워크, 서브넷, 포트의 UUID 및 소유 프로젝트 ID입니다."
   type = object({
     project_ids = object({
       external = string
@@ -14,6 +14,11 @@ variable "neutron" {
       ext-subnet = string
       k8s-subnet = string
       ops-subnet = string
+    })
+    ops_port_ids = object({
+      observability-port = string
+      jenkins-port       = string
+      vault              = string
     })
   })
 }
@@ -33,5 +38,11 @@ import {
 import {
   for_each = var.neutron.subnet_ids
   to       = module.network.openstack_networking_subnet_v2.subnets[each.key]
+  id       = each.value
+}
+
+import {
+  for_each = var.neutron.ops_port_ids
+  to       = module.network.openstack_networking_port_v2.ops_ports[each.key]
   id       = each.value
 }
