@@ -11,3 +11,19 @@ alloy_cluster: vault-vm
 alloy_remote_write_url: http://172.16.20.20:9090/api/v1/write
 alloy_loki_url: http://172.16.20.20:3100/loki/api/v1/push
 alloy_journal_units: [vault.service, alloy.service, ssh.service]
+
+# OS 호스트명(vault)이 VM 이름과 달라 instance 라벨을 vault-vm으로 맞춘다
+alloy_instance: "{{ inventory_hostname }}"
+
+# Vault 자체 메트릭: 메트릭 전용 listener(127.0.0.1:8210)에서 토큰 없이 수집
+# 인증서는 roles/vault가 시스템 신뢰 목록에 등록한 CA로 검증
+alloy_scrape_jobs:
+  - name: vault
+    address: "127.0.0.1:8210"
+    scheme: https
+    metrics_path: /v1/sys/metrics
+    params: { format: [prometheus] }
+
+# Vault audit 로그 (vault audit enable 이후 생성)
+alloy_file_logs:
+  - { path: /var/log/vault/audit.log, labels: { service: vault, component: audit } }

@@ -95,6 +95,7 @@ ansible-playbook playbooks/monitoring.yml --ask-vault-pass
   - `base.yml`: Watchdog, TargetDown
   - `node.yml`: 노드 디스크·메모리, Alloy 데이터 끊김 (물리 노드 + K8s 노드 공통)
   - `kubernetes.yml`: 노드 NotReady, Pod·Deployment·Job 상태, etcd, API 서버, CoreDNS
+  - `vault.yml`: Vault sealed 또는 응답 없음
   - 배포 전 문법 검사: `promtool check rules` (prom/prometheus 이미지에 포함)
 - Grafana 데이터소스(Prometheus, Alertmanager): `roles/monitoring/files/grafana/provisioning/` 로 자동 등록
 - Prometheus는 `--web.enable-remote-write-receiver`로 Alloy의 remote_write를 받음
@@ -133,9 +134,12 @@ ansible-playbook playbooks/alloy.yml --limit jenkins,vault
   - OpenStack 노드는 Kolla-Ansible이 띄운 exporter를 수집 (아래 표)
 - 네트워크 메트릭에서 가상 인터페이스(docker veth, OpenStack tap/qvo/qvb/qbr) 제외: `alloy_netdev_device_exclude`
 - 디버깅 UI: `127.0.0.1:12345` (외부 미노출, `ssh -L 12345:localhost:12345`로 접속)
+- `instance` 라벨은 기본이 OS 호스트명. VM 이름과 다르면 `alloy_instance`로 지정 (vault-vm)
+- 단독 VM의 서비스 메트릭: vault-vm은 Vault `/v1/sys/metrics`, jenkins-vm은 Prometheus 플러그인 `/prometheus/` (`alloy_scrape_jobs`)
 - 로그: `alloy_loki_url`을 지정한 그룹만 수집. 라벨 `env`·`cluster`·`node`
   - Kolla 로그 파일: `alloy_kolla_log_services`. 라벨 `service`·`component`
   - journald: systemd 서비스는 `alloy_journal_units`(라벨 `unit`), 컨테이너는 `alloy_journal_containers`(라벨 `container`)
+  - 그 밖의 로그 파일: `alloy_file_logs` (경로 + 라벨). vault-vm의 audit 로그
   - 컨테이너 로그는 compose의 `logging.driver: journald`로 journal에 쌓임 (monitoring, jenkins role). `docker logs`도 그대로 사용 가능
 
 ### Kolla-Ansible exporter (OpenStack 서비스 메트릭)
@@ -215,7 +219,28 @@ vault status                      # Sealed false
 
 - unseal key는 팀원에게 나눠 보관하고, Git·Slack·Ansible Vault 파일에 함께 두지 않는다
 - root token은 초기 설정(인증 방식·정책 생성) 후 `vault token revoke`로 폐기하고, 필요할 때 `vault operator generate-root`로 다시 발급
-- VM 재부팅이나 서비스 재시작 뒤에는 `vault operator unseal`을 다시 실행해야 함
+- VM 재부팅이나 서비스 재시작 뒤에는 `vault operator unseal`을 다시 실행해야 함 (잊으면 `VaultSealedOrDown` 알림)
+
+### 메트릭
+
+- 메트릭 전용 listener `127.0.0.1:8210`에서 `/v1/sys/metrics`를 토큰 없이 허용 (외부 8200 listener는 그대로 토큰 필요)
+- 같은 VM의 Alloy가 수집. 인증서 검증을 위해 role이 Vault CA를 시스템 신뢰 목록에 등록
+- listener를 바꾸면 Vault가 재시작되므로 **배포 후 unseal 필요**
+
+### audit 로그 (수동 1회)
+
+누가 언제 어떤 경로에 접근했는지 남깁니다. 비밀값은 HMAC으로 가려져 기록됩니다.
+
+```bash
+ssh ubuntu@10.20.0.170
+vault login                       # sys/audit 권한이 있는 토큰 (root 또는 관리자)
+vault audit enable file file_path=/var/log/vault/audit.log mode=0640
+vault audit list
+```
+
+- 폴더 `/var/log/vault`는 role이 `vault:adm 2750`으로 만듦. Alloy(adm 그룹)가 읽어 Loki로 전송 (`{service="vault", component="audit"}`)
+- logrotate로 매일 로테이션, 7일 보관 (`/etc/logrotate.d/vault-audit`). 로테이션 후 SIGHUP으로 파일을 다시 열며 sealed 되지 않음
+- **audit 파일에 쓰지 못하면 Vault가 요청을 거부**하므로 디스크 여유를 확인
 
 ---
 <br>

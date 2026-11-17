@@ -9,3 +9,7 @@ alloy_loki_url: http://172.16.20.20:3100/loki/api/v1/push
 # 컨테이너는 roles/jenkins의 docker-compose에서 logging driver를 journald로 지정
 alloy_journal_units: [docker.service, alloy.service, ssh.service]
 alloy_journal_containers: [jenkins]
+
+# Jenkins 빌드 메트릭: Prometheus 플러그인(roles/jenkins/files/plugins.txt)의 /prometheus/ 엔드포인트
+alloy_scrape_jobs:
+  - { name: jenkins, address: "127.0.0.1:8080", metrics_path: /prometheus/ }

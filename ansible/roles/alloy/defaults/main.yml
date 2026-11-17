@@ -18,6 +18,8 @@ alloy_scrape_interval: 30s
 # name은 job 라벨이자 Alloy 컴포넌트 이름이라 영문·숫자·_만 사용
 #   - { name: mysqld, address: "10.10.0.11:9104" }
 #   - { name: openstack, address: "10.10.0.11:9198", interval: 60s, timeout: 45s }
+# 선택 항목: scheme(https), metrics_path(기본 /metrics), params(쿼리 문자열)
+#   - { name: vault, address: "127.0.0.1:8210", scheme: https, metrics_path: /v1/sys/metrics, params: { format: [prometheus] } }
 alloy_scrape_jobs: []
 
 # 네트워크 메트릭에서 뺄 인터페이스. 컨테이너·VM마다 생기는 가상 인터페이스는 수가 많고 수시로 바뀜
@@ -34,6 +36,13 @@ alloy_kolla_log_services: []
 # 컨테이너는 compose에서 logging driver를 journald로 지정해야 journal에 쌓인다
 alloy_journal_units: []
 alloy_journal_containers: []
+
+# 그 밖에 파일로 쌓이는 로그. labels는 Loki 라벨 (고유값을 넣지 말 것)
+#   - { path: /var/log/vault/audit.log, labels: { service: vault, component: audit } }
+alloy_file_logs: []
+
+# 호스트 메트릭의 instance 라벨. 비워두면 OS 호스트명. VM 이름과 다를 때 group_vars에서 지정
+# alloy_instance: "{{ inventory_hostname }}"
 
 # Alloy 디버깅 UI. 외부에 노출하지 않도록 localhost에만 바인딩
 alloy_listen_addr: 127.0.0.1:12345

@@ -5,6 +5,10 @@
     name: vault
     state: restarted
 
+- name: Update CA certificates
+  ansible.builtin.command: update-ca-certificates
+  changed_when: true
+
 # SIGHUP: 재시작 없이 TLS 인증서를 다시 읽는다 (sealed 되지 않음)
 - name: Reload vault
   ansible.builtin.systemd:

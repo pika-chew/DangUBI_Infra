@@ -7,8 +7,29 @@ prometheus.exporter.unix "host" {
   }
 }
 
+{% if alloy_instance is defined %}
+// instance 라벨은 기본이 OS 호스트명이다. VM 이름과 다르면 지정한 이름으로 바꾼다.
+discovery.relabel "host" {
+  targets = prometheus.exporter.unix.host.targets
+
+  rule {
+    target_label = "instance"
+    replacement  = "{{ alloy_instance }}"
+  }
+}
+
+discovery.relabel "alloy" {
+  targets = prometheus.exporter.self.alloy.targets
+
+  rule {
+    target_label = "instance"
+    replacement  = "{{ alloy_instance }}"
+  }
+}
+
+{% endif %}
 prometheus.scrape "host" {
-  targets         = prometheus.exporter.unix.host.targets
+  targets         = {{ 'discovery.relabel.host.output' if alloy_instance is defined else 'prometheus.exporter.unix.host.targets' }}
   forward_to      = [prometheus.remote_write.default.receiver]
   scrape_interval = "{{ alloy_scrape_interval }}"
 }
@@ -17,7 +38,7 @@ prometheus.scrape "host" {
 prometheus.exporter.self "alloy" { }
 
 prometheus.scrape "alloy" {
-  targets         = prometheus.exporter.self.alloy.targets
+  targets         = {{ 'discovery.relabel.alloy.output' if alloy_instance is defined else 'prometheus.exporter.self.alloy.targets' }}
   forward_to      = [prometheus.remote_write.default.receiver]
   scrape_interval = "{{ alloy_scrape_interval }}"
 }
@@ -35,6 +56,19 @@ prometheus.scrape "{{ job.name }}" {
   scrape_interval = "{{ job.interval | default(alloy_scrape_interval) }}"
 {% if job.timeout is defined %}
   scrape_timeout  = "{{ job.timeout }}"
+{% endif %}
+{% if job.scheme is defined %}
+  scheme          = "{{ job.scheme }}"
+{% endif %}
+{% if job.metrics_path is defined %}
+  metrics_path    = "{{ job.metrics_path }}"
+{% endif %}
+{% if job.params is defined %}
+  params          = {
+{% for key, values in job.params.items() %}
+    "{{ key }}" = [{% for value in values %}"{{ value }}"{{ ', ' if not loop.last }}{% endfor %}],
+{% endfor %}
+  }
 {% endif %}
 }
 
@@ -58,7 +92,8 @@ prometheus.remote_write "default" {
 }
 {% set alloy_kolla_logs = alloy_kolla_log_services | length > 0 %}
 {% set alloy_journal_logs = (alloy_journal_units | length > 0) or (alloy_journal_containers | length > 0) %}
-{% if alloy_loki_url is defined and (alloy_kolla_logs or alloy_journal_logs) %}
+{% set alloy_file_log_targets = alloy_file_logs | length > 0 %}
+{% if alloy_loki_url is defined and (alloy_kolla_logs or alloy_journal_logs or alloy_file_log_targets) %}
 {% if alloy_kolla_logs %}
 
 // ---------- Kolla 서비스 로그 → Loki ----------
@@ -193,6 +228,37 @@ loki.process "journal" {
     }
   }
 {% endif %}
+}
+{% endif %}
+{% if alloy_file_log_targets %}
+
+// ---------- 그 밖의 로그 파일 → Loki ----------
+// journal에 남지 않고 파일로만 쌓이는 로그 (예: Vault audit 로그)
+local.file_match "files" {
+  path_targets = [
+{% for file in alloy_file_logs %}
+    {
+      "__path__" = "{{ file.path }}",
+{% for key, value in file.labels.items() %}
+      "{{ key }}" = "{{ value }}",
+{% endfor %}
+    },
+{% endfor %}
+  ]
+}
+
+loki.source.file "files" {
+  targets    = local.file_match.files.targets
+  forward_to = [loki.process.files.receiver]
+}
+
+loki.process "files" {
+  forward_to = [loki.write.default.receiver]
+
+  // 파일 경로 라벨은 지정한 라벨(service 등)로 대신하므로 지운다.
+  stage.label_drop {
+    values = ["filename"]
+  }
 }
 {% endif %}
 

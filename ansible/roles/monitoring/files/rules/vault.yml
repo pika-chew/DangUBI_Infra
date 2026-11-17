@@ -1,0 +1,13 @@
+# HashiCorp Vault 알림. 메트릭은 vault-vm의 Alloy가 메트릭 전용 listener(127.0.0.1:8210)에서 수집한다.
+groups:
+  - name: vault
+    rules:
+      # sealed 상태에서는 /v1/sys/metrics가 응답하지 않아 up이 0이 된다.
+      # 재시작·재부팅 뒤 unseal을 잊으면 Vault를 쓰는 모든 서비스가 비밀값을 못 읽으므로 critical
+      - alert: VaultSealedOrDown
+        expr: up{job="vault"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "{{ $labels.instance }}의 Vault가 sealed 상태이거나 응답하지 않음. vault status 확인 후 unseal 필요"
