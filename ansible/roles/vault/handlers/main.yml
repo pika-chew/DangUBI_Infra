@@ -1,0 +1,12 @@
+---
+# 재시작하면 Vault는 sealed 상태로 올라온다. 재시작 후 unseal 필요
+- name: Restart vault
+  ansible.builtin.systemd:
+    name: vault
+    state: restarted
+
+# SIGHUP: 재시작 없이 TLS 인증서를 다시 읽는다 (sealed 되지 않음)
+- name: Reload vault
+  ansible.builtin.systemd:
+    name: vault
+    state: reloaded

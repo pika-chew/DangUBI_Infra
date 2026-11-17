@@ -1,0 +1,33 @@
+---
+# 변수 접두어는 hashicorp_vault_. vault_ 접두어는 Ansible Vault 비밀값 전용으로 쓰므로 섞지 않는다
+
+# 비워두면 APT 저장소 최신 버전 설치. 고정하려면 APT 버전 문자열 전체를 지정 (예: "1.20.4-1")
+# 설치 후 패키지를 hold하므로 apt upgrade로 올라가지 않는다. 업그레이드는 이 값을 바꿔서 진행
+hashicorp_vault_version: ""
+
+# API·클러스터 통신 주소. 다른 노드(K8s 등)가 접근할 사설 IP (inventory/group_vars에서 지정)
+# hashicorp_vault_private_ip: 172.16.20.30
+hashicorp_vault_api_port: 8200
+hashicorp_vault_cluster_port: 8201
+
+# Raft(integrated storage) 데이터 경로. 저장소 데이터는 VM 루트 디스크에 둔다
+hashicorp_vault_data_dir: /opt/vault/data
+
+hashicorp_vault_ui: true
+hashicorp_vault_cluster_name: dangubi-vault
+
+# TLS: 부트스트랩용 자체 CA로 서버 인증서를 발급한다
+# 클라이언트는 CA 인증서(hashicorp_vault_tls_ca_cert)를 VAULT_CACERT로 지정해 검증
+hashicorp_vault_tls_dir: /opt/vault/tls
+hashicorp_vault_tls_ca_cert: "{{ hashicorp_vault_tls_dir }}/vault-ca.crt"
+hashicorp_vault_tls_ca_key: "{{ hashicorp_vault_tls_dir }}/vault-ca.key"
+hashicorp_vault_tls_cert: "{{ hashicorp_vault_tls_dir }}/vault.crt"
+hashicorp_vault_tls_key: "{{ hashicorp_vault_tls_dir }}/vault.key"
+hashicorp_vault_tls_ca_not_after: "+3650d"
+hashicorp_vault_tls_cert_not_after: "+825d"
+# 서버 인증서 SAN에 추가할 주소 (사설 IP, 127.0.0.1, localhost, 호스트명은 자동 포함)
+# Floating IP로 접속하는 클라이언트가 있으면 inventory/group_vars에서 추가
+hashicorp_vault_tls_extra_sans: []
+
+# CA 인증서를 Ansible control node로 가져올 경로. 비우면 가져오지 않음
+hashicorp_vault_ca_fetch_dest: "{{ lookup('env', 'HOME') }}/.vault/dangubi-vault-ca.crt"

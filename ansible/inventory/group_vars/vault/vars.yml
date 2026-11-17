@@ -1,0 +1,7 @@
+---
+# Vault API·클러스터 통신 주소 (사설 IP)
+hashicorp_vault_private_ip: 172.16.20.30
+
+# jenkins-vm·물리 노드는 Floating IP로 접속하므로 인증서 SAN에 추가
+hashicorp_vault_tls_extra_sans:
+  - "IP:10.20.0.170"

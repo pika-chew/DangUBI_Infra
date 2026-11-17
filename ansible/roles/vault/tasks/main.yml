@@ -1,0 +1,212 @@
+---
+# HashiCorp 공식 APT 저장소로 Vault를 설치하고 systemd 서비스로 실행
+# 초기화(vault operator init)와 unseal은 키가 로그·파일에 남지 않도록 수동으로 진행 (README 참고)
+- name: Verify required variables are set
+  ansible.builtin.assert:
+    that:
+      - hashicorp_vault_private_ip is defined
+      - hashicorp_vault_private_ip | length > 0
+    fail_msg: "hashicorp_vault_private_ip를 inventory/group_vars/vault/vars.yml에 지정하세요."
+
+# Raft 스토리지는 mlock을 끄고(disable_mlock) 대신 swap을 꺼서 비밀값이 디스크에 기록되지 않게 한다
+- name: Disable active swap
+  ansible.builtin.command: swapoff -a
+  when: ansible_facts.swaptotal_mb | int > 0
+  changed_when: true
+
+- name: Disable persistent swap entries
+  ansible.builtin.replace:
+    path: /etc/fstab
+    regexp: '^(\s*[^#\s]\S*\s+\S+\s+swap\s+.*)$'
+    replace: '# \1'
+
+# python3-cryptography: community.crypto 모듈이 대상 호스트에서 인증서를 만들 때 사용
+- name: Install HashiCorp repository dependencies
+  ansible.builtin.apt:
+    name:
+      - ca-certificates
+      - gpg
+      - python3-debian
+      - python3-cryptography
+    state: present
+    update_cache: true
+
+- name: Create APT keyring directory
+  ansible.builtin.file:
+    path: /etc/apt/keyrings
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+
+- name: Download HashiCorp repository signing key
+  ansible.builtin.get_url:
+    url: https://apt.releases.hashicorp.com/gpg
+    dest: /etc/apt/keyrings/hashicorp.asc
+    owner: root
+    group: root
+    mode: '0644'
+
+- name: Add HashiCorp APT repository
+  ansible.builtin.deb822_repository:
+    name: hashicorp
+    types: [deb]
+    uris: https://apt.releases.hashicorp.com
+    suites: ["{{ ansible_facts.distribution_release }}"]
+    components: [main]
+    signed_by: /etc/apt/keyrings/hashicorp.asc
+    state: present
+
+# 패키지가 vault 사용자, /etc/vault.d, systemd 유닛(vault.service)을 함께 만든다
+- name: Install Vault
+  ansible.builtin.apt:
+    name: "{{ 'vault=' ~ hashicorp_vault_version if hashicorp_vault_version else 'vault' }}"
+    state: present
+    update_cache: true
+    allow_change_held_packages: true
+  notify: Restart vault
+
+# 의도하지 않은 업그레이드 방지. 버전을 바꿀 때는 hashicorp_vault_version 수정
+- name: Hold Vault package version
+  ansible.builtin.dpkg_selections:
+    name: vault
+    selection: hold
+
+- name: Create Vault data directory
+  ansible.builtin.file:
+    path: "{{ hashicorp_vault_data_dir }}"
+    state: directory
+    owner: vault
+    group: vault
+    mode: '0750'
+
+- name: Create Vault TLS directory
+  ansible.builtin.file:
+    path: "{{ hashicorp_vault_tls_dir }}"
+    state: directory
+    owner: root
+    group: vault
+    mode: '0750'
+
+# ---------- TLS: 부트스트랩 CA + 서버 인증서 ----------
+# CA 개인키는 root만 읽는다. Vault 프로세스에는 필요 없음
+- name: Generate Vault CA private key
+  community.crypto.openssl_privatekey:
+    path: "{{ hashicorp_vault_tls_ca_key }}"
+    owner: root
+    group: root
+    mode: '0600'
+
+- name: Create Vault CA CSR
+  community.crypto.openssl_csr_pipe:
+    privatekey_path: "{{ hashicorp_vault_tls_ca_key }}"
+    common_name: "{{ hashicorp_vault_cluster_name }} CA"
+    use_common_name_for_san: false
+    basic_constraints: ["CA:TRUE"]
+    basic_constraints_critical: true
+    key_usage: [keyCertSign, cRLSign]
+    key_usage_critical: true
+  register: hashicorp_vault_ca_csr
+  changed_when: false
+
+- name: Issue self-signed Vault CA certificate
+  community.crypto.x509_certificate:
+    path: "{{ hashicorp_vault_tls_ca_cert }}"
+    csr_content: "{{ hashicorp_vault_ca_csr.csr }}"
+    privatekey_path: "{{ hashicorp_vault_tls_ca_key }}"
+    provider: selfsigned
+    selfsigned_not_after: "{{ hashicorp_vault_tls_ca_not_after }}"
+    owner: root
+    group: vault
+    mode: '0644'
+
+- name: Generate Vault server private key
+  community.crypto.openssl_privatekey:
+    path: "{{ hashicorp_vault_tls_key }}"
+    owner: root
+    group: vault
+    mode: '0640'
+  notify: Reload vault
+
+- name: Create Vault server CSR
+  community.crypto.openssl_csr_pipe:
+    privatekey_path: "{{ hashicorp_vault_tls_key }}"
+    common_name: "{{ inventory_hostname }}"
+    subject_alt_name: "{{ hashicorp_vault_tls_sans }}"
+    extended_key_usage: [serverAuth, clientAuth]
+    key_usage: [digitalSignature, keyEncipherment]
+  vars:
+    hashicorp_vault_tls_sans: >-
+      {{ ['IP:' ~ hashicorp_vault_private_ip, 'IP:127.0.0.1', 'DNS:localhost', 'DNS:' ~ inventory_hostname]
+         + hashicorp_vault_tls_extra_sans }}
+  register: hashicorp_vault_server_csr
+  changed_when: false
+
+# SAN이 바뀌면 CSR 내용이 달라져 인증서를 다시 발급한다
+- name: Issue Vault server certificate
+  community.crypto.x509_certificate:
+    path: "{{ hashicorp_vault_tls_cert }}"
+    csr_content: "{{ hashicorp_vault_server_csr.csr }}"
+    privatekey_path: "{{ hashicorp_vault_tls_key }}"
+    provider: ownca
+    ownca_path: "{{ hashicorp_vault_tls_ca_cert }}"
+    ownca_privatekey_path: "{{ hashicorp_vault_tls_ca_key }}"
+    ownca_not_after: "{{ hashicorp_vault_tls_cert_not_after }}"
+    owner: root
+    group: vault
+    mode: '0644'
+  notify: Reload vault
+
+# ---------- 설정과 서비스 ----------
+- name: Render Vault config
+  ansible.builtin.template:
+    src: vault.hcl.j2
+    dest: /etc/vault.d/vault.hcl
+    owner: root
+    group: vault
+    mode: '0640'
+  notify: Restart vault
+
+# 호스트에서 vault CLI를 바로 쓰도록 주소와 CA 지정
+- name: Set Vault CLI environment for login shells
+  ansible.builtin.template:
+    src: vault-cli.sh.j2
+    dest: /etc/profile.d/vault.sh
+    owner: root
+    group: root
+    mode: '0644'
+
+- name: Ensure Vault service is enabled and running
+  ansible.builtin.systemd:
+    name: vault
+    enabled: true
+    state: started
+
+- name: Apply pending Vault restarts
+  ansible.builtin.meta: flush_handlers
+
+# uninitcode·sealedcode를 200으로 받아 초기화 전·sealed 상태도 정상 응답으로 처리
+- name: Wait for Vault API
+  ansible.builtin.uri:
+    url: "https://127.0.0.1:{{ hashicorp_vault_api_port }}/v1/sys/health?standbyok=true&uninitcode=200&sealedcode=200"
+    ca_path: "{{ hashicorp_vault_tls_ca_cert }}"
+    return_content: true
+  register: hashicorp_vault_health
+  until: hashicorp_vault_health.status == 200
+  retries: 10
+  delay: 3
+
+- name: Show Vault status
+  ansible.builtin.debug:
+    msg:
+      - "version: {{ hashicorp_vault_health.json.version }}"
+      - "initialized: {{ hashicorp_vault_health.json.initialized }}"
+      - "sealed: {{ hashicorp_vault_health.json.sealed }}"
+      - "{{ 'sealed 상태입니다. README의 unseal 절차를 진행하세요.' if hashicorp_vault_health.json.sealed else 'unsealed' }}"
+
+- name: Fetch Vault CA certificate to control node
+  ansible.builtin.fetch:
+    src: "{{ hashicorp_vault_tls_ca_cert }}"
+    dest: "{{ hashicorp_vault_ca_fetch_dest }}"
+    flat: true
+  when: hashicorp_vault_ca_fetch_dest | length > 0
