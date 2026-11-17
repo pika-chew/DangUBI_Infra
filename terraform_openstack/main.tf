@@ -48,14 +48,30 @@ variable "k8s_control_plane" {
   })
 }
 
+variable "k8s_workers" {
+  description = "기존 Kubernetes 워커 인스턴스와 두 종류의 Flavor UUID입니다."
+  type = object({
+    flavor_id     = string
+    cmp_flavor_id = string
+    instance_ids = object({
+      k8s-worker-1 = string
+      k8s-worker-2 = string
+      k8s-worker-3 = string
+      k8s-worker-4 = string
+    })
+  })
+}
+
 module "compute" {
   source = "./modules/compute"
 
-  ubuntu_image_id         = var.observability.image_id
-  observability_flavor_id = var.observability.flavor_id
-  vault_flavor_id         = var.vault.flavor_id
-  jenkins_flavor_id       = var.jenkins.flavor_id
-  k8s_control_flavor_id   = var.k8s_control_plane.flavor_id
+  ubuntu_image_id          = var.observability.image_id
+  observability_flavor_id  = var.observability.flavor_id
+  vault_flavor_id          = var.vault.flavor_id
+  jenkins_flavor_id        = var.jenkins.flavor_id
+  k8s_control_flavor_id    = var.k8s_control_plane.flavor_id
+  k8s_worker_flavor_id     = var.k8s_workers.flavor_id
+  k8s_worker_cmp_flavor_id = var.k8s_workers.cmp_flavor_id
 }
 
 import {
@@ -76,5 +92,11 @@ import {
 import {
   for_each = var.k8s_control_plane.instance_ids
   to       = module.compute.openstack_compute_instance_v2.k8s_control_plane[each.key]
+  id       = each.value
+}
+
+import {
+  for_each = var.k8s_workers.instance_ids
+  to       = module.compute.openstack_compute_instance_v2.k8s_workers[each.key]
   id       = each.value
 }
