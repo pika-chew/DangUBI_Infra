@@ -7,7 +7,8 @@ monitoring_data_dir: /var/lib/monitoring
 prometheus_image: prom/prometheus:v3.5.0
 alertmanager_image: prom/alertmanager:v0.28.1
 grafana_image: grafana/grafana:12.0.2
-loki_image: grafana/loki:3.5.0
+# 3.5.x는 structured metadata가 없는 push마다 "negative structured metadata bytes received" 에러를 찍는다 (3.6.0에서 수정)
+loki_image: grafana/loki:3.7.10
 
 prometheus_port: 9090
 alertmanager_port: 9093
