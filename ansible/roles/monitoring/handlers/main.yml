@@ -12,6 +12,12 @@
     services: [alertmanager]
     state: restarted
 
+- name: Restart loki
+  community.docker.docker_compose_v2:
+    project_src: "{{ monitoring_dir }}"
+    services: [loki]
+    state: restarted
+
 - name: Restart grafana
   community.docker.docker_compose_v2:
     project_src: "{{ monitoring_dir }}"
