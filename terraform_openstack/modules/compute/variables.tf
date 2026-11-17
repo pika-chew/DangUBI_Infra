@@ -32,3 +32,13 @@ variable "k8s_worker_cmp_flavor_id" {
   description = "Kubernetes 워커 4가 사용하는 기존 Nova Flavor의 UUID입니다."
   type        = string
 }
+
+variable "ops_network_id" {
+  description = "테스트 VM이 연결될 기존 ops-net의 UUID입니다."
+  type        = string
+}
+
+variable "test_vm_flavor_id" {
+  description = "테스트 VM에 사용할 Flavor UUID입니다."
+  type        = string
+}

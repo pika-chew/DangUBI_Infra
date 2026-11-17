@@ -62,6 +62,12 @@ variable "k8s_workers" {
   })
 }
 
+variable "test_vm_flavor_id" {
+  description = "테스트 VM에 사용할 Flavor UUID입니다. 생략하면 기존 Jenkins VM과 같은 Flavor를 사용합니다."
+  type        = string
+  default     = null
+}
+
 module "compute" {
   source = "./modules/compute"
 
@@ -72,6 +78,8 @@ module "compute" {
   k8s_control_flavor_id    = var.k8s_control_plane.flavor_id
   k8s_worker_flavor_id     = var.k8s_workers.flavor_id
   k8s_worker_cmp_flavor_id = var.k8s_workers.cmp_flavor_id
+  ops_network_id           = module.network.ops_network_id
+  test_vm_flavor_id        = coalesce(var.test_vm_flavor_id, var.jenkins.flavor_id)
 }
 
 import {
