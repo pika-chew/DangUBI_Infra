@@ -21,6 +21,10 @@ inhibit_rules:
     target_matchers: ['alertname = "NodeDiskAlmostFull"']
     equal: [cluster, instance, mountpoint]
 
+  - source_matchers: ['alertname = "KubePersistentVolumeCritical"']
+    target_matchers: ['alertname = "KubePersistentVolumeFillingUp"']
+    equal: [cluster, namespace, persistentvolumeclaim]
+
   # Vault 전용 알림이 있으므로 같은 대상의 일반 TargetDown은 보내지 않는다
   - source_matchers: ['alertname = "VaultSealedOrDown"']
     target_matchers: ['alertname = "TargetDown"']

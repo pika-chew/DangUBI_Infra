@@ -39,13 +39,48 @@ groups:
         annotations:
           summary: "{{ $labels.namespace }}/{{ $labels.deployment }} 원하는 Pod 수와 실제 사용 가능한 Pod 수가 15분 이상 다름"
 
+      # MySQL(Oracle operator), MongoDB(Percona)는 StatefulSet이라 위 Deployment 알림에 잡히지 않는다.
+      # Kafka(Strimzi)는 StatefulSet 대신 StrimziPodSet을 써서 여기에도 잡히지 않는다.
+      - alert: KubeStatefulSetReplicasMismatch
+        expr: kube_statefulset_replicas != kube_statefulset_status_replicas_ready
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.namespace }}/{{ $labels.statefulset }} 원하는 Pod 수와 Ready Pod 수가 15분 이상 다름"
+
       # CronJob이 만든 Job도 포함한다. 실패한 Job 오브젝트가 지워질 때까지 계속 울린다.
+      # kube_job_status_failed는 실패한 Pod 수라 재시도(backoffLimit)로 결국 성공한 Job도 울린다.
+      # Job의 Failed 조건(재시도 한도까지 모두 실패)만 본다.
       - alert: KubeJobFailed
-        expr: kube_job_status_failed > 0
+        expr: kube_job_failed{condition="true"} == 1
         labels:
           severity: warning
         annotations:
           summary: "{{ $labels.namespace }}/{{ $labels.job_name }} Job 실패"
+
+  # PVC 용량: kubelet이 Pod에 붙은 볼륨의 파일시스템 사용량을 보고한다(job="kubelet")
+  - name: kubernetes-persistent-volume  
+    rules:
+      # 노드 디스크 알림은 Cinder 볼륨 안쪽을 보지 못하므로 PVC 단위로 따로 본다.
+      # 노드 디스크를 나눠 쓰는 PVC(local-path 등)는 노드 디스크 전체 값이 보고되어 NodeDisk 알림과 함께 울린다.
+      - alert: KubePersistentVolumeFillingUp
+        expr: |
+          kubelet_volume_stats_available_bytes / kubelet_volume_stats_capacity_bytes * 100 < 15
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.namespace }}/{{ $labels.persistentvolumeclaim }} ({{ $labels.instance }}) 남은 공간 {{ $value | printf \"%.1f\" }}%"
+
+      - alert: KubePersistentVolumeCritical
+        expr: |
+          kubelet_volume_stats_available_bytes / kubelet_volume_stats_capacity_bytes * 100 < 5
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "{{ $labels.namespace }}/{{ $labels.persistentvolumeclaim }} ({{ $labels.instance }}) 남은 공간 {{ $value | printf \"%.1f\" }}%"
 
   # 컨트롤 플레인: CP 노드 3대의 API 서버, etcd
   - name: kubernetes-control-plane
