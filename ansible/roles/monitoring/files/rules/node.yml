@@ -1,5 +1,6 @@
-# 노드 자원 알림. 물리 노드(cluster="openstack")와 K8s 노드(cluster="k8s")에 공통으로 적용한다.
-# 노드 메트릭의 job 이름은 물리 노드가 integrations/unix, K8s 노드가 node다.
+# 노드 자원 알림. Alloy가 호스트 메트릭을 보내는 모든 머신에 공통으로 적용한다.
+#   물리 노드(cluster="openstack"), K8s 노드(cluster="k8s"), 단독 VM(observability-vm, jenkins-vm, vault-vm)
+# 노드 메트릭의 job 이름은 K8s 노드가 node, 나머지(Ansible로 설치한 Alloy)는 integrations/unix다.
 groups:
   - name: node
     rules:
@@ -34,6 +35,19 @@ groups:
           severity: warning
         annotations:
           summary: "{{ $labels.instance }} 사용 가능 메모리 {{ $value | printf \"%.1f\" }}%"
+
+  - name: network
+    rules:
+      # 물리 노드는 무선(wlo1)으로 외부 인터넷에 나가고, 노드끼리·모니터링 VM과는 유선 스위치로 통신한다.
+      # 그래서 무선이 끊겨도 메트릭은 계속 들어와 이 알림이 울린다.
+      # carrier는 링크 연결 여부만 본다. 연결은 됐는데 인터넷이 안 되는 경우(공유기·DNS 장애)는 잡지 못한다.
+      - alert: HostUplinkDown
+        expr: node_network_carrier{cluster="openstack", device="wlo1"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "{{ $labels.instance }} 무선 업링크(wlo1) 끊김"
 
   - name: collector
     rules:
