@@ -36,6 +36,29 @@ groups:
         annotations:
           summary: "{{ $labels.instance }} 사용 가능 메모리 {{ $value | printf \"%.1f\" }}%"
 
+      # 메모리가 바닥나 커널이 프로세스를 강제 종료(OOM kill)했을 때. 머신이 죽는 게 아니라 프로세스 하나가 죽는다.
+      # NodeMemoryHigh는 10분 지속 조건이라 순간적으로 메모리가 터지는 경우를 놓치므로 따로 둔다.
+      # K8s 노드에서는 Pod가 자기 메모리 limit을 넘어 종료된 경우(OOMKilled)도 여기에 포함된다.
+      - alert: HostOomKill
+        expr: increase(node_vmstat_oom_kill[5m]) > 0
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.instance }}에서 메모리 부족으로 프로세스 강제 종료(OOM kill) 발생"
+
+  - name: power
+    rules:
+      # 노트북은 정전·어댑터 분리 시 배터리로 버티다 조용히 꺼진다.
+      # ADP1은 노트북 AC 어댑터. 데스크톱에는 이 장치가 없어 메트릭 자체가 없으므로 울리지 않는다.
+      # USB-C 포트(ucsi-source-psy-*)는 포트별 상태라 기본값부터 0인 포트가 있어 보지 않는다.
+      - alert: HostOnBattery
+        expr: node_power_supply_online{cluster="openstack", power_supply="ADP1"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "{{ $labels.instance }} 전원 어댑터 분리, 배터리로 동작 중 (정전 또는 케이블 확인)"
+
   - name: network
     rules:
       # 물리 노드는 무선(wlo1)으로 외부 인터넷에 나가고, 노드끼리·모니터링 VM과는 유선 스위치로 통신한다.
