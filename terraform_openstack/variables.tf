@@ -41,7 +41,7 @@ variable "flavor_names" {
   default = {
     observability  = "observability"
     vault          = "vault"
-    jenkins        = "jenkins1"
+    jenkins        = "jenkins2"
     k8s_control    = "k8s-control"
     k8s_worker     = "k8s-worker"
     k8s_worker_cmp = "k8s-worker-cmp"
