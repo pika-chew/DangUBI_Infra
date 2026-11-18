@@ -56,8 +56,27 @@ groups:
         expr: kube_job_failed{condition="true"} == 1
         labels:
           severity: warning
+          # 사건형: Job이 TTL로 지워지면 풀리지만 실패가 해결된 것은 아니므로 RESOLVED를 보내지 않는다
+          type: event
         annotations:
           summary: "{{ $labels.namespace }}/{{ $labels.job_name }} Job 실패"
+
+      # CronJob이 만든 Job이 성공했을 때 Job 이름을 알린다. 실패는 위 KubeJobFailed가 알린다.
+      # completion_time은 성공한 Job에만 생긴다. 완료 후 10분 동안만 조건이 참이라 한 번만 온다.
+      # 값은 소요 시간(완료 - 시작)
+      - alert: KubeCronJobSucceeded
+        expr: |
+          (
+            (kube_job_status_completion_time - kube_job_status_start_time)
+              and on (namespace, job_name) ((time() - kube_job_status_completion_time) < 600)
+          )
+          * on (namespace, job_name) group_left (owner_name)
+            kube_job_owner{owner_kind="CronJob"}
+        labels:
+          severity: info
+          type: event
+        annotations:
+          summary: "{{ $labels.owner_name }} 완료 → Job {{ $labels.job_name }} ({{ $value | humanizeDuration }} 소요)"
 
   # PVC 용량: kubelet이 Pod에 붙은 볼륨의 파일시스템 사용량을 보고한다(job="kubelet")
   - name: kubernetes-persistent-volume  
@@ -109,7 +128,7 @@ groups:
       - alert: KubeAPIErrorsHigh
         expr: |
           sum by (instance) (rate(apiserver_request_total{code=~"5.."}[5m]))
-            / sum by (instance) (rate(apiserver_request_total[5m])) * 100 > 5
+            / sum by (instance) (rate(apiserverequest_total[5m])) * 100 > 5
         for: 10m
         labels:
           severity: warning

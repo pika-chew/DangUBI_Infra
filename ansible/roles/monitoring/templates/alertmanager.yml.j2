@@ -2,6 +2,10 @@
 global:
   slack_api_url: "{{ alertmanager_slack_webhook_url }}"
 
+# Slack 메시지 양식(제목·색·본문). files/slack.tmpl을 같은 폴더에 복사해 둔다
+templates:
+  - /etc/alertmanager/*.tmpl
+
 route:
   receiver: slack
   # 같은 알림 이름·환경·클러스터끼리 메시지 1개로 묶는다
@@ -14,6 +18,11 @@ route:
     # 이후 외부 하트비트 서비스로 라우팅한다.
     - matchers: ['alertname = "Watchdog"']
       receiver: "null"
+
+    # 사건형 알림(규칙에 type: event). "최근 N분 안에 일이 있었다"는 조건이라 시간이 지나면 저절로 풀린다.
+    # 이때의 RESOLVED는 문제가 해결됐다는 뜻이 아니므로 보내지 않는다.
+    - matchers: ['type = "event"']
+      receiver: slack-event
 
 # 같은 디스크에 critical이 울리면 warning은 보내지 않는다
 inhibit_rules:
@@ -30,18 +39,26 @@ inhibit_rules:
     target_matchers: ['alertname = "TargetDown"']
     equal: [cluster, instance, job]
 
+# title_link: 기본값은 내부 주소(http://alertmanager:9093)라 브라우저에서 열리지 않으므로 링크를 뺀다
 receivers:
   - name: "null"
+
   - name: slack
     slack_configs:
-      # 해결됐을 때도 알린다
       - send_resolved: true
+        title_link: ""
 {% raw %}
-        # 예: [FIRING:2] NodeDiskAlmostFull (k8s)
-        title: '[{{ .Status | toUpper }}{{ if eq .Status "firing" }}:{{ .Alerts.Firing | len }}{{ end }}] {{ .CommonLabels.alertname }} ({{ .CommonLabels.cluster }})'
-        # 발생 = critical 빨강 / warning 노랑, 해결 = 초록
-        color: '{{ if eq .Status "firing" }}{{ if eq .CommonLabels.severity "critical" }}danger{{ else }}warning{{ end }}{{ else }}good{{ end }}'
-        text: |-
-          {{ range .Alerts }}• *{{ .Labels.severity }}* {{ .Annotations.summary }}
-          {{ end }}
+        pretext: '{{ template "dangubi.pretext" . }}'
+        title: '{{ template "dangubi.title" . }}'
+        color: '{{ template "dangubi.color" . }}'
+        text: '{{ template "dangubi.text" . }}'
+
+  - name: slack-event
+    slack_configs:
+      - send_resolved: false
+        title_link: ""
+        pretext: '{{ template "dangubi.pretext" . }}'
+        title: '{{ template "dangubi.title" . }}'
+        color: '{{ template "dangubi.color" . }}'
+        text: '{{ template "dangubi.text" . }}'
 {% endraw %}

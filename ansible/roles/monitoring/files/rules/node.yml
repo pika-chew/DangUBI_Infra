@@ -43,6 +43,8 @@ groups:
         expr: increase(node_vmstat_oom_kill[5m]) > 0
         labels:
           severity: warning
+          # 사건형: 5분 뒤 저절로 풀리므로 RESOLVED를 보내지 않는다 (alertmanager slack-event)
+          type: event
         annotations:
           summary: "{{ $labels.instance }}에서 메모리 부족으로 프로세스 강제 종료(OOM kill) 발생"
 
