@@ -11,7 +11,6 @@ terraform {
 }
 
 # 인증과 리전은 OpenRC의 OS_* 환경 변수 또는 OS_CLOUD 설정에서 읽습니다.
-# backend를 지정하지 않아 현재 state는 이 폴더의 terraform.tfstate에 저장됩니다.
 provider "openstack" {}
 
 module "compute" {
