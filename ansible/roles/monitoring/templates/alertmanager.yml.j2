@@ -2,7 +2,7 @@
 global:
   slack_api_url: "{{ alertmanager_slack_webhook_url }}"
 
-# Slack 메시지 양식(제목·색·본문). files/slack.tmpl을 같은 폴더에 복사해 둔다
+# Slack 메시지 양식(제목·색·본문). templates/slack.tmpl.j2를 렌더링해 같은 폴더에 둔다
 templates:
   - /etc/alertmanager/*.tmpl
 

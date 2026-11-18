@@ -58,10 +58,10 @@
     mode: '0644'
   notify: Restart alertmanager
 
-# Slack 메시지 양식. Alertmanager 템플릿 문법({{ }})을 쓰므로 Jinja 렌더링 없이 복사
-- name: Copy Alertmanager Slack template
-  ansible.builtin.copy:
-    src: slack.tmpl
+# Slack 메시지 양식. Grafana 주소(grafana_external_url)만 Ansible이 채우고 나머지는 raw로 그대로 둔다
+- name: Render Alertmanager Slack template
+  ansible.builtin.template:
+    src: slack.tmpl.j2
     dest: "{{ monitoring_dir }}/alertmanager/slack.tmpl"
     mode: '0644'
   notify: Restart alertmanager

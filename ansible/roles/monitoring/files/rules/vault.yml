@@ -11,6 +11,7 @@ groups:
           severity: critical
         annotations:
           summary: "{{ $labels.instance }}의 Vault가 sealed 상태이거나 응답하지 않음. vault status 확인 후 unseal 필요"
+          log_query: '{cluster="vault-vm", unit="vault.service"}'
 
       # Vault는 audit 로그를 하나도 쓰지 못하면 모든 요청을 거부한다(감사 기록 없이 비밀값을 내주지 않음).
       # 이때 Vault는 살아 있고 unsealed라 up은 1로 남아 위 알림으로는 잡히지 않는다.
@@ -21,3 +22,4 @@ groups:
           severity: critical
         annotations:
           summary: "{{ $labels.instance }} Vault audit 로그 기록 실패. 모든 요청이 거부될 수 있음 (/var/log/vault 디스크·권한 확인)"
+          log_query: '{cluster="vault-vm", unit="vault.service"}'

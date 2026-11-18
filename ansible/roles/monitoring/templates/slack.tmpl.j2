@@ -1,15 +1,21 @@
+{# Grafana 주소만 Ansible 변수로 넣고, 나머지는 Alertmanager 템플릿 문법이라 raw로 그대로 둔다 #}
+{% raw %}{{ define "dangubi.grafana_url" }}{% endraw %}{{ grafana_external_url }}{% raw %}{{ end }}{% endraw %}
+
+{% raw %}
 {{/*
   DangUBI Slack 알림 양식. alertmanager.yml의 slack_configs에서 template으로 불러 쓴다.
-  Ansible이 Jinja 렌더링 없이 그대로 복사하므로 이중 중괄호를 그대로 써도 된다.
 
-  FIRING                                  RESOLVED
-  ⚠️ [warning] KubePodNotReady · 2건      ✅ [warning] NodeMemoryHigh · 해결
-  - 대상 : k8s                            - 대상 : openstack
-  - 심각도 : warning                       - 심각도 : warning
-  - 설명 :                                 - 설명 : os-ctl2
-      • summary (17:14~)                   - 시간 : 16:31 ~ 17:00
-      • summary (17:15~)
-  (1건이면 설명·시간을 한 줄씩, description이 있으면 "- 영향 :" 줄 추가)
+  FIRING                                     RESOLVED
+  ⚠️ [warning] KubePodNotReady · 2건 (해결 1건)  ✅ [warning] NodeMemoryHigh · 해결
+  - 대상 : k8s                               - 대상 : openstack
+  - 심각도 : warning                          - 심각도 : warning
+  - 설명 :                                    - 설명 : os-ctl2
+      • summary (17:14 ~) 로그                - 시간 : 16:31 ~ 17:00
+      • summary (17:15 ~) 로그
+  - 해결됨 :
+      • 대상 이름 (16:50 ~ 17:20)
+  (1건이면 설명·시간·로그를 한 줄씩, description이 있으면 "- 영향 :" 줄 추가)
+  로그 줄은 규칙에 log_query annotation이 있는 알림에만 붙는다.
 */}}
 
 {{/* 대상 이름: 있는 라벨 중 가장 구체적인 것을 쓴다 */}}
@@ -30,10 +36,13 @@
 {{/* 색 막대 위 첫 줄 */}}
 {{ define "dangubi.pretext" }}{{ .Status | toUpper }}{{ end }}
 
-{{/* 제목: 발생 critical 🚨 / warning ⚠️ / info 📢, 해결 ✅ */}}
+{{/*
+  제목: 발생 critical 🚨 / warning ⚠️ / info 📢, 해결 ✅
+  같은 묶음에 이미 해결된 알림이 섞여 있으면 FIRING이어도 "(해결 N건)"을 붙인다
+*/}}
 {{ define "dangubi.title" -}}
 {{- if eq .Status "firing" -}}
-{{- if eq .CommonLabels.severity "critical" }}🚨{{ else if eq .CommonLabels.severity "warning" }}⚠️{{ else }}📢{{ end }} [{{ .CommonLabels.severity }}] {{ .CommonLabels.alertname }} · {{ .Alerts.Firing | len }}건
+{{- if eq .CommonLabels.severity "critical" }}🚨{{ else if eq .CommonLabels.severity "warning" }}⚠️{{ else }}📢{{ end }} [{{ .CommonLabels.severity }}] {{ .CommonLabels.alertname }} · {{ .Alerts.Firing | len }}건{{ with .Alerts.Resolved }} (해결 {{ len . }}건){{ end }}
 {{- else -}}
 ✅ [{{ .CommonLabels.severity }}] {{ .CommonLabels.alertname }} · 해결
 {{- end -}}
@@ -51,7 +60,17 @@
 {{ define "dangubi.resolved_time" }}{{ template "dangubi.kst" .StartsAt }} ~ {{ template "dangubi.kst" .EndsAt }}{{ end }}
 
 {{/*
-  본문. 같은 값(대상·심각도·영향)은 한 번만, 설명·시간은 알림마다.
+  Grafana Explore 링크. Loki 데이터소스(uid=loki)에 log_query를 넣고 알림 시각 1시간 전 ~ 5분 후를 연다.
+  js: 쿼리 안의 큰따옴표를 JSON 문자열로 쓸 수 있게 이스케이프, urlquery: 주소에 넣을 수 있게 인코딩
+*/}}
+{{ define "dangubi.logs_url" -}}
+{{ template "dangubi.grafana_url" }}/explore?orgId=1&schemaVersion=1&panes=
+{{- printf `{"a":{"datasource":"loki","queries":[{"refId":"A","datasource":{"type":"loki","uid":"loki"},"expr":"%s"}],"range":{"from":"%d","to":"%d"}}}` (js .Annotations.log_query) (.StartsAt.Add -3600000000000).UnixMilli (.StartsAt.Add 300000000000).UnixMilli | urlquery }}
+{{- end }}
+{{ define "dangubi.logs_link" }}<{{ template "dangubi.logs_url" . }}|로그 보기>{{ end }}
+
+{{/*
+  본문. 같은 값(대상·심각도·영향)은 한 번만, 설명·시간·로그는 알림마다.
   해결된 알림은 마지막 값이 남은 summary 대신 대상 이름을 쓴다.
 */}}
 {{ define "dangubi.text" -}}
@@ -62,10 +81,12 @@
 {{ if eq (len .Alerts.Firing) 1 -}}
 {{ range .Alerts.Firing }}- *설명* : {{ .Annotations.summary }}
 - *시간* : {{ template "dangubi.firing_time" . }}
+{{ if .Annotations.log_query }}- *로그* : {{ template "dangubi.logs_link" . }}  `{{ .Annotations.log_query }}`
+{{ end -}}
 {{ end -}}
 {{ else if .Alerts.Firing -}}
 - *설명* :
-{{ range .Alerts.Firing }}      • {{ .Annotations.summary }} ({{ template "dangubi.firing_time" . }})
+{{ range .Alerts.Firing }}      • {{ .Annotations.summary }} ({{ template "dangubi.firing_time" . }}){{ if .Annotations.log_query }}  {{ template "dangubi.logs_link" . }}{{ end }}
 {{ end -}}
 {{ end -}}
 {{ if and (eq .Status "resolved") (eq (len .Alerts.Resolved) 1) -}}
@@ -78,3 +99,4 @@
 {{ end -}}
 {{ end -}}
 {{- end }}
+{% endraw %}

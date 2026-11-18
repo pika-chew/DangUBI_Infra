@@ -27,6 +27,9 @@ prometheus_retention_size: 40GB
 monitoring_env: private
 monitoring_cluster: observability-vm
 
+# 팀원이 브라우저로 Grafana를 여는 주소. Slack 알림의 "로그 보기" 링크에 쓴다
+grafana_external_url: "http://{{ ansible_host }}:{{ grafana_port }}"
+
 grafana_admin_user: admin
 # grafana_admin_password는 inventory/group_vars/monitoring에서 Vault 값으로 지정
 
