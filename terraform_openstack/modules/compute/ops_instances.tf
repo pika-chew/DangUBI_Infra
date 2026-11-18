@@ -1,3 +1,5 @@
+# 운영 VM 3대의 현재 사양과 연결을 표현합니다. AZ nova 안의 실제 호스트는 스케줄러가 선택합니다.
+# 기존 VM의 network를 port 참조로 바꾸면 교체가 계획될 수 있어 plan을 확인해야 합니다.
 resource "openstack_compute_instance_v2" "observability_vm" {
   name              = "observability-vm"
   image_id          = var.ubuntu_image_id
@@ -26,6 +28,7 @@ resource "openstack_compute_instance_v2" "vault" {
   }
 }
 
+# Jenkins 데이터 볼륨의 생성·연결은 별도 관리 대상이며 이 VM 블록에는 포함하지 않습니다.
 resource "openstack_compute_instance_v2" "jenkins_vm" {
   name              = "jenkins-vm"
   image_id          = var.ubuntu_image_id
