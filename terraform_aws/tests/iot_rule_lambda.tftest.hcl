@@ -37,6 +37,24 @@ run "invoke_service_lambda_only" {
   }
 }
 
+run "iot_core_error_logging" {
+  command = plan
+
+  module {
+    source = "./modules/ingestion"
+  }
+
+  assert {
+    condition = (
+      aws_iot_logging_options.this.default_log_level == "ERROR" &&
+      !aws_iot_logging_options.this.disable_all_logs &&
+      aws_cloudwatch_log_group.iot_core.name == "AWSIotLogsV2" &&
+      aws_cloudwatch_log_group.iot_core.retention_in_days == 7
+    )
+    error_message = "IoT Core 로그는 ERROR 수준, AWSIotLogsV2 7일 보관이어야 합니다."
+  }
+}
+
 run "disabled_rule_keeps_lambda_target" {
   command = plan
 
