@@ -9,13 +9,19 @@
   ⚠️ [warning] KubePodNotReady · 2건 (해결 1건)  ✅ [warning] NodeMemoryHigh · 해결
   - 대상 : k8s                               - 대상 : openstack
   - 심각도 : warning                          - 심각도 : warning
-  - 설명 :                                    - 설명 : os-ctl2
-      • summary (17:14 ~) 로그                - 시간 : 16:31 ~ 17:00
-      • summary (17:15 ~) 로그
+                                             - 설명 : os-ctl2
+  - 설명 : summary                            - 발생 : 16:31
+  - 발생 : 17:14 ~                            - 해결 : 17:00
+  - 로그 : 로그 보기
+                                             (여러 건이면 설명·발생·해결 묶음을
+  - 설명 : summary                             빈 줄로 나눠 반복)
+  - 발생 : 17:15 ~
+  - 로그 : 로그 보기
+
   - 해결됨 :
       • 대상 이름 (16:50 ~ 17:20)
-  (1건이면 설명·시간·로그를 한 줄씩, description이 있으면 "- 영향 :" 줄 추가)
-  로그 줄은 규칙에 log_query annotation이 있는 알림에만 붙는다.
+  알림마다 설명·발생·로그 묶음을 빈 줄로 나눠 반복한다. description이 있으면 "- 영향 :" 줄 추가.
+  로그 줄은 규칙에 log_query annotation이 있는 알림에만 붙고, 1건일 때만 쿼리도 함께 보인다.
 */}}
 
 {{/* 대상 이름: 있는 라벨 중 가장 구체적인 것을 쓴다 */}}
@@ -78,23 +84,21 @@
 - *심각도* : `{{ .CommonLabels.severity }}`
 {{ with .CommonAnnotations.description }}- *영향* : {{ . }}
 {{ end -}}
-{{ if eq (len .Alerts.Firing) 1 -}}
-{{ range .Alerts.Firing }}- *설명* : {{ .Annotations.summary }}
-- *시간* : {{ template "dangubi.firing_time" . }}
-{{ if .Annotations.log_query }}- *로그* : {{ template "dangubi.logs_link" . }}  `{{ .Annotations.log_query }}`
+{{ $single := eq (len .Alerts.Firing) 1 -}}
+{{ range .Alerts.Firing }}
+- *설명* : {{ .Annotations.summary }}
+- *발생* : {{ template "dangubi.firing_time" . }}
+{{ if .Annotations.log_query }}- *로그* : {{ template "dangubi.logs_link" . }}{{ if $single }}  `{{ .Annotations.log_query }}`{{ end }}
 {{ end -}}
 {{ end -}}
-{{ else if .Alerts.Firing -}}
-- *설명* :
-{{ range .Alerts.Firing }}      • {{ .Annotations.summary }} ({{ template "dangubi.firing_time" . }}){{ if .Annotations.log_query }}  {{ template "dangubi.logs_link" . }}{{ end }}
+{{ if eq .Status "resolved" -}}
+{{ range .Alerts.Resolved }}
+- *설명* : {{ template "dangubi.target" . }}
+- *발생* : {{ template "dangubi.kst" .StartsAt }}
+- *해결* : {{ template "dangubi.kst" .EndsAt }}
 {{ end -}}
-{{ end -}}
-{{ if and (eq .Status "resolved") (eq (len .Alerts.Resolved) 1) -}}
-{{ range .Alerts.Resolved }}- *설명* : {{ template "dangubi.target" . }}
-- *시간* : {{ template "dangubi.resolved_time" . }}
-{{ end -}}
-{{ else if .Alerts.Resolved -}}
-- *{{ if .Alerts.Firing }}해결됨{{ else }}설명{{ end }}* :
+{{ else if .Alerts.Resolved }}
+- *해결됨* :
 {{ range .Alerts.Resolved }}      • {{ template "dangubi.target" . }} ({{ template "dangubi.resolved_time" . }})
 {{ end -}}
 {{ end -}}
