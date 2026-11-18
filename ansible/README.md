@@ -45,6 +45,7 @@ ansible-playbook playbooks/jenkins.yml
 - Docker 빌드: 호스트의 `/var/run/docker.sock`을 마운트하고 docker 그룹 GID를 컨테이너에 추가해 호스트 데몬으로 이미지 빌드/푸시
 - 네트워크: 컨테이너 네트워크 MTU를 `jenkins_docker_mtu`(기본 1450)로 맞춤. VM NIC MTU보다 크면 HTTPS 연결이 멈출 수 있음
 - 재시작 정책 `unless-stopped`, `/login` 헬스체크, 타임존 `Asia/Seoul`
+- 디스크 정리: systemd timer `docker-prune.timer`가 매주 일요일 04:00(KST)에 컨테이너가 참조하지 않는 이미지와 빌드 캐시를 삭제 (`jenkins_docker_prune_schedule`). 볼륨(Go/Gradle 캐시)은 유지
 
 ### 초기 admin 비밀번호
 

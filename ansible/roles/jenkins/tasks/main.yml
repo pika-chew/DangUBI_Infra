@@ -58,3 +58,43 @@
     project_src: "{{ jenkins_dir }}"
     pull: never
     state: present
+
+# 컨테이너가 참조하는 이미지(실행 중인 custom-jenkins)는 prune 대상에서 빠진다
+# 볼륨(빌드 의존성 캐시)은 지우지 않도록 system/volume prune은 쓰지 않는다
+- name: Install Docker prune service
+  ansible.builtin.copy:
+    dest: /etc/systemd/system/docker-prune.service
+    mode: '0644'
+    content: |
+      [Unit]
+      Description=Remove unused Docker images and build cache
+      Requires=docker.service
+      After=docker.service
+
+      [Service]
+      Type=oneshot
+      ExecStart=/usr/bin/docker image prune -af
+      ExecStart=/usr/bin/docker builder prune -af
+
+# Persistent=false: VM이 꺼져 있어 놓친 실행을 부팅 직후(빌드 중일 수 있음)에 몰아서 하지 않음
+- name: Install Docker prune timer
+  ansible.builtin.copy:
+    dest: /etc/systemd/system/docker-prune.timer
+    mode: '0644'
+    content: |
+      [Unit]
+      Description=Weekly Docker image and build cache cleanup
+
+      [Timer]
+      OnCalendar={{ jenkins_docker_prune_schedule }}
+      Persistent=false
+
+      [Install]
+      WantedBy=timers.target
+
+- name: Enable Docker prune timer
+  ansible.builtin.systemd:
+    name: docker-prune.timer
+    enabled: true
+    state: started
+    daemon_reload: true

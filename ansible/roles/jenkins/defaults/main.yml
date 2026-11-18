@@ -9,3 +9,6 @@ jenkins_docker_mtu: 1450
 # 업데이트 센터 등 외부 HTTP 호출이 무한 대기하지 않도록 하는 타임아웃 (ms)
 jenkins_http_connect_timeout: 10000
 jenkins_http_read_timeout: 60000
+# 컨테이너가 참조하지 않는 이미지와 빌드 캐시를 주기적으로 삭제 (볼륨의 Go/Gradle 캐시는 유지)
+# 삭제 후 첫 빌드는 도구 이미지를 다시 받으므로, 빌드가 없는 시간에 주 1회 실행
+jenkins_docker_prune_schedule: "Sun *-*-* 04:00:00 Asia/Seoul"
