@@ -1,3 +1,4 @@
+# ext-net은 admin, k8s-net과 ops-net은 ubi 프로젝트 소유입니다.
 variable "project_ids" {
   description = "외부 네트워크와 UBI 내부 네트워크를 소유하는 프로젝트의 ID입니다."
   type = object({
