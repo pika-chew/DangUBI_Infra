@@ -1,21 +1,78 @@
 # OpenStack Terraform 실행
 
-## 기존 state가 있는 환경
+## 운영용 Swift 컨테이너 준비
 
-현재 리소스를 등록한 `os-cmp1`의 `terraform_openstack` 폴더에서 실행합니다.
-기존 `terraform.tfstate`와 백업을 보존하세요. 코드만 새로 내려받는다고 기존 state가 복원되지는 않습니다.
+Terraform은 전용 Swift 컨테이너의 `openstack/terraform.tfstate`에 현재 state를 저장합니다.
+Swift 버전 관리와 별도 `.backup` 객체는 사용하지 않으므로, 이전 버전은 자동으로 보존되지 않습니다.
+Swift S3 키는 `AWS_ACCESS_KEY_ID`와 `AWS_SECRET_ACCESS_KEY` 환경변수로 전달합니다.
 
-OpenRC를 불러오거나 `OS_CLOUD`를 설정한 뒤 다음 명령으로 확인합니다.
+아래 블록 전체를 Mac 터미널에 붙여넣고, 입력란에 앞서 테스트에 성공한 Vault의 Swift 키를 넣습니다.
+키는 화면에 표시되지 않으며 이 블록에서만 사용합니다. 아래 예시는 `ubi-openstack-tfstate`를 사용합니다.
+기존 데이터나 테스트 컨테이너는 재사용하지 않습니다. 이름이 이미 사용 중이면 별도 이름을 선택하고 이후 명령에도 같은 이름을 사용합니다.
+
+```zsh
+(
+set +x
+set -e
+unset AWS_PROFILE AWS_DEFAULT_PROFILE AWS_SESSION_TOKEN AWS_SECURITY_TOKEN
+export AWS_CONFIG_FILE=/dev/null AWS_SHARED_CREDENTIALS_FILE=/dev/null AWS_PAGER=""
+export AWS_REQUEST_CHECKSUM_CALCULATION=when_required AWS_RESPONSE_CHECKSUM_VALIDATION=when_required
+
+IFS= read -rs 'AWS_ACCESS_KEY_ID?Vault의 Swift access_key: '
+printf '\n'
+IFS= read -rs 'AWS_SECRET_ACCESS_KEY?Vault의 Swift secret_key: '
+printf '\n'
+: "${AWS_ACCESS_KEY_ID:?Swift access_key를 입력하세요}"
+: "${AWS_SECRET_ACCESS_KEY:?Swift secret_key를 입력하세요}"
+export AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY
+
+swift_s3() {
+  aws --endpoint-url http://10.10.0.10:8081 --region us-east-1 s3api "$@"
+}
+
+bucket=ubi-openstack-tfstate
+existing=$(swift_s3 list-buckets --query "Buckets[?Name=='$bucket'].Name | [0]" --output text)
+if [ "$existing" != None ]; then
+  printf '이미 사용 중인 컨테이너 이름입니다: %s\n' "$bucket" >&2
+  exit 1
+fi
+
+swift_s3 create-bucket --bucket "$bucket"
+swift_s3 list-objects-v2 --bucket "$bucket" --query KeyCount --output text
+)
+```
+
+목록 조회 결과가 `0`인지 확인합니다. 운영 state에는 민감 정보가 들어갈 수 있으므로 컨테이너 접근 권한과 내부 네트워크의 HTTP 사용 범위도 확인합니다.
+
+## 기존 로컬 state 이전
+
+이전 중에는 같은 state를 사용하는 작업을 중단합니다. 기존 리소스를 등록한 `os-cmp1`의 작업 폴더에서,
+backend 변경 코드를 받기 전에 `terraform state list`로 현재 리소스 목록을 확인합니다.
+코드를 받은 뒤 같은 폴더에서 Swift 키를 설정하고 아래 명령으로 기존 state를 옮깁니다.
+로컬 `terraform.tfstate`가 없거나 대상 컨테이너가 비어 있지 않으면 중단하고 실제 위치를 확인합니다.
 
 ```bash
-terraform init
+cd ~/DangUBI_Infra/terraform_openstack
+test -s terraform.tfstate && \
+  terraform init -migrate-state -backend-config="bucket=ubi-openstack-tfstate"
+```
+
+Terraform이 표시한 이전 대상이 예상한 Swift 컨테이너와 일치할 때만 확인합니다. `-reconfigure`는 기존 state를 옮기지 않습니다.
+이전 후 `terraform state list`가 이전 목록과 일치하는지 확인하고, OpenRC 또는 `OS_CLOUD` 인증을 준비한 뒤 `terraform plan`의 `No changes`를 확인합니다.
+기존 파일을 검증 전에 삭제하지 마세요.
+
+## 이전 후 일반 작업
+
+새 작업 폴더에서는 Swift 키를 설정하고 같은 컨테이너 이름으로 초기화합니다. 인프라 변경을 계획하려면 OpenRC를 불러오거나 `OS_CLOUD`를 설정합니다.
+
+```bash
+terraform init -backend-config="bucket=ubi-openstack-tfstate"
 terraform plan -out=lookup.tfplan
 ```
 
 기존 UUID 입력 변수는 이름 기반 조회로 대체했으므로 `-var-file=import.tfvars`는 더 이상 사용하지 않습니다.
 `import.tfvars`는 보관해도 되지만, 이전 이름의 변수를 전달하면 미선언 변수 경고가 발생합니다.
-기존 리소스 주소와 모듈 내부 설정은 유지했습니다. 이 환경에서는 생성·수정·삭제가 없는지 먼저 확인하세요.
-그 경우에만 저장한 계획을 적용합니다.
+`No changes`라면 적용할 필요가 없습니다. 변경이 있다면 계획이 의도한 생성·수정·삭제만 포함하는지 확인한 뒤 적용합니다.
 
 ```bash
 terraform apply lookup.tfplan
@@ -75,4 +132,3 @@ terraform plan
 `import_existing=false`는 import용 조회를 끄는 옵션이며, 생성을 막는 옵션은 아닙니다.
 운영 state가 없는 폴더에서 기본 plan을 실행하면 기존 리소스와 같은 이름의 자원을 새로 생성하려고 계획할 수 있습니다.
 전체 인프라를 빈 OpenStack 환경에 재구축하는 설정도 아닙니다. 기존 프로젝트·이미지·Flavor·보안 그룹 등이 필요합니다.
-Swift backend 설정과 state 이전은 이번 변경에 포함하지 않았습니다.
