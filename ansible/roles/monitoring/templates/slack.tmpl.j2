@@ -1,0 +1,102 @@
+{# Grafana 주소만 Ansible 변수로 넣고, 나머지는 Alertmanager 템플릿 문법이라 raw로 그대로 둔다 #}
+{% raw %}{{ define "dangubi.grafana_url" }}{% endraw %}{{ grafana_external_url }}{% raw %}{{ end }}{% endraw %}
+
+{% raw %}
+{{/*
+  DangUBI Slack 알림 양식. alertmanager.yml의 slack_configs에서 template으로 불러 쓴다.
+
+  FIRING                                     RESOLVED
+  ⚠️ [warning] KubePodNotReady · 2건 (해결 1건)  ✅ [warning] NodeMemoryHigh · 해결
+  - 대상 : k8s                               - 대상 : openstack
+  - 심각도 : warning                          - 심각도 : warning
+  - 설명 :                                    - 설명 : os-ctl2
+      • summary (17:14 ~) 로그                - 시간 : 16:31 ~ 17:00
+      • summary (17:15 ~) 로그
+  - 해결됨 :
+      • 대상 이름 (16:50 ~ 17:20)
+  (1건이면 설명·시간·로그를 한 줄씩, description이 있으면 "- 영향 :" 줄 추가)
+  로그 줄은 규칙에 log_query annotation이 있는 알림에만 붙는다.
+*/}}
+
+{{/* 대상 이름: 있는 라벨 중 가장 구체적인 것을 쓴다 */}}
+{{ define "dangubi.target" -}}
+{{- if .Labels.pod }}{{ .Labels.namespace }}/{{ .Labels.pod }}
+{{- else if .Labels.persistentvolumeclaim }}{{ .Labels.namespace }}/{{ .Labels.persistentvolumeclaim }}
+{{- else if .Labels.deployment }}{{ .Labels.namespace }}/{{ .Labels.deployment }}
+{{- else if .Labels.statefulset }}{{ .Labels.namespace }}/{{ .Labels.statefulset }}
+{{- else if .Labels.job_name }}{{ .Labels.namespace }}/{{ .Labels.job_name }}
+{{- else if .Labels.node }}{{ .Labels.node }}
+{{- else }}{{ .Labels.instance }}{{ with .Labels.mountpoint }} {{ . }}{{ end }}{{ with .Labels.device }} {{ . }}{{ end }}
+{{- end -}}
+{{- end }}
+
+{{/* 컨테이너 시간대가 UTC라 9시간(나노초)을 더해 한국 시간으로 표시 */}}
+{{ define "dangubi.kst" }}{{ (.Add 32400000000000).Format "15:04" }}{{ end }}
+
+{{/* 색 막대 위 첫 줄 */}}
+{{ define "dangubi.pretext" }}{{ .Status | toUpper }}{{ end }}
+
+{{/*
+  제목: 발생 critical 🚨 / warning ⚠️ / info 📢, 해결 ✅
+  같은 묶음에 이미 해결된 알림이 섞여 있으면 FIRING이어도 "(해결 N건)"을 붙인다
+*/}}
+{{ define "dangubi.title" -}}
+{{- if eq .Status "firing" -}}
+{{- if eq .CommonLabels.severity "critical" }}🚨{{ else if eq .CommonLabels.severity "warning" }}⚠️{{ else }}📢{{ end }} [{{ .CommonLabels.severity }}] {{ .CommonLabels.alertname }} · {{ .Alerts.Firing | len }}건{{ with .Alerts.Resolved }} (해결 {{ len . }}건){{ end }}
+{{- else -}}
+✅ [{{ .CommonLabels.severity }}] {{ .CommonLabels.alertname }} · 해결
+{{- end -}}
+{{- end }}
+
+{{/* 메시지 왼쪽 색 막대 */}}
+{{ define "dangubi.color" -}}
+{{- if eq .Status "firing" -}}
+{{- if eq .CommonLabels.severity "critical" }}danger{{ else if eq .CommonLabels.severity "warning" }}warning{{ else }}#439FE0{{ end -}}
+{{- else }}good{{ end -}}
+{{- end }}
+
+{{/* 시간: 발생은 "시작~", 사건형(type=event)은 시각만, 해결은 "시작 ~ 끝" */}}
+{{ define "dangubi.firing_time" }}{{ template "dangubi.kst" .StartsAt }}{{ if ne .Labels.type "event" }} ~{{ end }}{{ end }}
+{{ define "dangubi.resolved_time" }}{{ template "dangubi.kst" .StartsAt }} ~ {{ template "dangubi.kst" .EndsAt }}{{ end }}
+
+{{/*
+  Grafana Explore 링크. Loki 데이터소스(uid=loki)에 log_query를 넣고 알림 시각 1시간 전 ~ 5분 후를 연다.
+  js: 쿼리 안의 큰따옴표를 JSON 문자열로 쓸 수 있게 이스케이프, urlquery: 주소에 넣을 수 있게 인코딩
+*/}}
+{{ define "dangubi.logs_url" -}}
+{{ template "dangubi.grafana_url" }}/explore?orgId=1&schemaVersion=1&panes=
+{{- printf `{"a":{"datasource":"loki","queries":[{"refId":"A","datasource":{"type":"loki","uid":"loki"},"expr":"%s"}],"range":{"from":"%d","to":"%d"}}}` (js .Annotations.log_query) (.StartsAt.Add -3600000000000).UnixMilli (.StartsAt.Add 300000000000).UnixMilli | urlquery }}
+{{- end }}
+{{ define "dangubi.logs_link" }}<{{ template "dangubi.logs_url" . }}|로그 보기>{{ end }}
+
+{{/*
+  본문. 같은 값(대상·심각도·영향)은 한 번만, 설명·시간·로그는 알림마다.
+  해결된 알림은 마지막 값이 남은 summary 대신 대상 이름을 쓴다.
+*/}}
+{{ define "dangubi.text" -}}
+- *대상* : `{{ .CommonLabels.cluster }}`
+- *심각도* : `{{ .CommonLabels.severity }}`
+{{ with .CommonAnnotations.description }}- *영향* : {{ . }}
+{{ end -}}
+{{ if eq (len .Alerts.Firing) 1 -}}
+{{ range .Alerts.Firing }}- *설명* : {{ .Annotations.summary }}
+- *시간* : {{ template "dangubi.firing_time" . }}
+{{ if .Annotations.log_query }}- *로그* : {{ template "dangubi.logs_link" . }}  `{{ .Annotations.log_query }}`
+{{ end -}}
+{{ end -}}
+{{ else if .Alerts.Firing -}}
+- *설명* :
+{{ range .Alerts.Firing }}      • {{ .Annotations.summary }} ({{ template "dangubi.firing_time" . }}){{ if .Annotations.log_query }}  {{ template "dangubi.logs_link" . }}{{ end }}
+{{ end -}}
+{{ end -}}
+{{ if and (eq .Status "resolved") (eq (len .Alerts.Resolved) 1) -}}
+{{ range .Alerts.Resolved }}- *설명* : {{ template "dangubi.target" . }}
+- *시간* : {{ template "dangubi.resolved_time" . }}
+{{ end -}}
+{{ else if .Alerts.Resolved -}}
+- *{{ if .Alerts.Firing }}해결됨{{ else }}설명{{ end }}* :
+{{ range .Alerts.Resolved }}      • {{ template "dangubi.target" . }} ({{ template "dangubi.resolved_time" . }})
+{{ end -}}
+{{ end -}}
+{{- end }}
+{% endraw %}
