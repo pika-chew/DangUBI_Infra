@@ -20,6 +20,7 @@ skip-check:
   - CKV_AWS_158  # CloudWatch Log Group KMS 암호화
   - CKV_AWS_173  # Lambda 환경 변수 KMS 암호화 (시크릿을 환경 변수에 두지 않음)
   - CKV_AWS_241  # Firehose KMS 암호화
+  - CKV_AWS_26   # SNS 암호화 (AWS 관리형 키로는 CloudWatch 알람이 게시하지 못함. 알람 메시지에 민감값 없음)
   # 아키텍처상 해당 없음
   - CKV_AWS_117  # Lambda VPC 배치 (VPC 리소스에 접근하지 않음)
   - CKV_AWS_116  # Lambda DLQ (Kinesis 이벤트 소스는 on_failure destination으로 처리)

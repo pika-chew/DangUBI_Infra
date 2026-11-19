@@ -25,8 +25,30 @@ variable "queue_age_threshold_seconds" {
 
 variable "alarm_action_arns" {
   type        = list(string)
-  description = "알람·복구 알림을 보낼 기존 SNS 토픽 등의 ARN"
+  description = "모듈이 만드는 알람 토픽 외에 추가로 알림을 보낼 SNS 토픽 등의 ARN"
   default     = []
+}
+
+variable "slack_workspace_id" {
+  type        = string
+  description = "AWS Chatbot에 연결한 Slack 워크스페이스 ID(T로 시작). null이면 Slack 전달을 만들지 않음"
+  default     = null
+
+  validation {
+    condition     = var.slack_workspace_id == null ? true : can(regex("^T[A-Z0-9]{8,}$", var.slack_workspace_id))
+    error_message = "Slack 워크스페이스 ID는 T로 시작하는 대문자·숫자여야 합니다. C로 시작하는 값은 채널 ID입니다."
+  }
+}
+
+variable "slack_channel_id" {
+  type        = string
+  description = "알람을 받을 Slack 채널 ID(C로 시작). 채널 이름(#...)이 아님"
+  default     = null
+
+  validation {
+    condition     = var.slack_channel_id == null ? true : can(regex("^[CG][A-Z0-9]{8,}$", var.slack_channel_id))
+    error_message = "Slack 채널 ID는 C 또는 G로 시작하는 대문자·숫자여야 합니다. 채널 이름(#...)은 쓸 수 없습니다."
+  }
 }
 
 variable "processing_function_name" {
