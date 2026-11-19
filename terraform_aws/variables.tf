@@ -87,20 +87,6 @@ variable "cloudwatch_alarm_action_arns" {
   default     = []
 }
 
-# public 레포라 Slack ID는 커밋하지 않습니다. Jenkins Plan stage에서 TF_VAR_*로 주입합니다.
-# 둘 중 하나라도 null이면 알람은 SNS 토픽까지만 전달합니다.
-variable "slack_workspace_id" {
-  description = "AWS Chatbot에 연결한 Slack 워크스페이스 ID(T로 시작). Jenkins credential slack-workspace-id"
-  type        = string
-  default     = null
-}
-
-variable "slack_channel_id" {
-  description = "CloudWatch 알람을 받을 Slack 채널 ID(C로 시작). Jenkins credential slack-channel-id"
-  type        = string
-  default     = null
-}
-
 variable "iot_device_csr_paths" {
   description = "차량 ID별 CSR 파일 경로. Terraform 실행 디렉토리 기준"
   type        = map(string)
