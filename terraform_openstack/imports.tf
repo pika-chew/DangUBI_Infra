@@ -104,6 +104,13 @@ data "openstack_networking_floatingip_v2" "existing" {
   pool = data.openstack_networking_network_v2.existing["ext-net"].id
 }
 
+data "openstack_networking_secgroup_v2" "existing" {
+  for_each = var.import_existing ? module.network.security_group_names : toset([])
+
+  name      = each.key
+  tenant_id = data.openstack_identity_project_v3.projects["ubi"].id
+}
+
 # Provider 3.4의 VM 단일 조회는 이름 검색을 지원하지 않아 포트에서 얻은 UUID를 사용합니다.
 data "openstack_compute_instance_v2" "existing" {
   for_each = var.import_existing ? local.import_ports : {}
@@ -163,6 +170,12 @@ import {
 import {
   for_each = data.openstack_networking_floatingip_v2.existing
   to       = module.network.openstack_networking_floatingip_v2.floating_ips[each.key]
+  id       = each.value.id
+}
+
+import {
+  for_each = data.openstack_networking_secgroup_v2.existing
+  to       = module.network.openstack_networking_secgroup_v2.groups[each.key]
   id       = each.value.id
 }
 
