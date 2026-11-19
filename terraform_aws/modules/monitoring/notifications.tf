@@ -33,12 +33,25 @@ resource "aws_iam_role_policy_attachment" "chatbot" {
   policy_arn = "arn:aws:iam::aws:policy/CloudWatchReadOnlyAccess"
 }
 
+# Chatbot은 생성 요청을 받은 뒤 역할을 비동기로 검증합니다. 역할이 전파되기 전이면 설정이 만들어지지 않습니다.
+resource "time_sleep" "chatbot_iam_propagation" {
+  count = local.chatbot_enabled ? 1 : 0
+
+  create_duration = "30s"
+
+  triggers = {
+    role_arn          = aws_iam_role.chatbot[0].arn
+    trust_policy_hash = sha256(aws_iam_role.chatbot[0].assume_role_policy)
+    policy_arn        = aws_iam_role_policy_attachment.chatbot[0].policy_arn
+  }
+}
+
 resource "aws_chatbot_slack_channel_configuration" "alarms" {
   count = local.chatbot_enabled ? 1 : 0
 
   region             = local.chatbot_region
   configuration_name = "${var.name_prefix}-aws-monitoring"
-  iam_role_arn       = aws_iam_role.chatbot[0].arn
+  iam_role_arn       = time_sleep.chatbot_iam_propagation[0].triggers["role_arn"]
   slack_team_id      = var.slack_workspace_id
   slack_channel_id   = var.slack_channel_id
   sns_topic_arns     = [aws_sns_topic.alarms.arn]
