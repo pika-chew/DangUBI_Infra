@@ -196,6 +196,10 @@ resource "openstack_networking_secgroup_rule_v2" "rules" {
   remote_group_id = try(each.value.remote_group, null) == null ? null : openstack_networking_secgroup_v2.groups[each.value.remote_group].id
 
   lifecycle {
+    # 일부 기존 규칙의 소유 프로젝트는 보안 그룹의 소유 프로젝트와 다릅니다.
+    # 인수 시 기존 소유자를 유지하고, 새로 만드는 규칙에는 위의 ubi 프로젝트를 사용합니다.
+    ignore_changes = [tenant_id]
+
     # Horizon은 원격 CIDR이 비어 있는 기본 규칙도 전체 CIDR로 표시합니다.
     # 두 표현을 허용하되 특정 CIDR이나 그룹으로 제한된 송신 상태는 감지합니다.
     postcondition {
