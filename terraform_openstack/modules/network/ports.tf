@@ -21,18 +21,10 @@ locals {
   # 각 포트에는 공통 SSH 그룹과 서비스별 그룹을 적용합니다.
   ops_port_security_group_ids = {
     for name, port in local.ops_ports : name => toset([
-      data.openstack_networking_secgroup_v2.ops["sg-ssh"].id,
-      data.openstack_networking_secgroup_v2.ops[port.security_group].id,
+      openstack_networking_secgroup_v2.groups["sg-ssh"].id,
+      openstack_networking_secgroup_v2.groups[port.security_group].id,
     ])
   }
-}
-
-# 기존 보안 그룹을 UBI 프로젝트 안에서 조회합니다. 그룹과 규칙 자체는 이 data로 관리하지 않습니다.
-data "openstack_networking_secgroup_v2" "ops" {
-  for_each = toset(concat(["sg-ssh"], [for port in values(local.ops_ports) : port.security_group]))
-
-  name      = each.key
-  tenant_id = var.project_ids.ubi
 }
 
 resource "openstack_networking_port_v2" "ops_ports" {

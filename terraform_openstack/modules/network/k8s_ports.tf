@@ -1,19 +1,11 @@
-# 기존 Kubernetes 보안 그룹의 UUID를 조회합니다. 공통 sg-ssh는 ports.tf의 조회 결과를 재사용합니다.
-data "openstack_networking_secgroup_v2" "k8s" {
-  for_each = toset(["sg-k8s", "sg-argocd"])
-
-  name      = each.key
-  tenant_id = var.project_ids.ubi
-}
-
 locals {
   k8s_control_plane_port_groups = toset([
-    data.openstack_networking_secgroup_v2.ops["sg-ssh"].id,
-    data.openstack_networking_secgroup_v2.k8s["sg-k8s"].id,
+    openstack_networking_secgroup_v2.groups["sg-ssh"].id,
+    openstack_networking_secgroup_v2.groups["sg-k8s"].id,
   ])
   # 워커는 컨트롤 플레인과 공통인 그룹에 sg-argocd를 추가합니다.
   k8s_worker_port_groups = setunion(local.k8s_control_plane_port_groups, toset([
-    data.openstack_networking_secgroup_v2.k8s["sg-argocd"].id,
+    openstack_networking_secgroup_v2.groups["sg-argocd"].id,
   ]))
 
   # 컨트롤 플레인은 API VIP 한 주소, 워커는 VIP용 CIDR 전체를 추가 송신 주소로 허용합니다.

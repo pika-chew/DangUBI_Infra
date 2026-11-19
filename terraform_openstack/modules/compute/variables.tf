@@ -1,3 +1,11 @@
+variable "instance_ports" {
+  description = "네트워크 모듈에서 관리하는 기존 VM용 Neutron 포트의 UUID와 MAC 주소입니다."
+  type = map(object({
+    id          = string
+    mac_address = string
+  }))
+}
+
 # 루트에서 전달받은 기존 이미지와 Flavor를 사용합니다. 해당 자원 자체는 이 모듈에서 생성하지 않습니다.
 variable "ubuntu_image_id" {
   description = "인스턴스가 공통으로 사용하는 Ubuntu 24.04 Glance 이미지의 UUID입니다."
