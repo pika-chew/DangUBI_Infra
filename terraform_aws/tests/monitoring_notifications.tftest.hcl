@@ -1,5 +1,4 @@
-# CloudWatch 알람 → SNS → Slack(Chatbot) 연결을 모의 provider로 확인합니다.
-# Slack ID는 실제 값이 아닌 형식만 맞춘 가짜 값입니다.
+# CloudWatch 알람 → SNS 연결과 콘솔 Slack 채널 설정이 쓸 역할을 모의 provider로 확인합니다.
 mock_provider "aws" {
   mock_resource "aws_sns_topic" {
     override_during = plan
@@ -8,8 +7,6 @@ mock_provider "aws" {
     }
   }
 }
-
-mock_provider "time" {}
 
 variables {
   name_prefix                          = "ubi-dev"
@@ -24,10 +21,9 @@ variables {
   firehose_stream_name                 = "ubi-dev-processed-firehose"
   firehose_log_group_name              = "/aws/kinesisfirehose/ubi-dev"
   firehose_freshness_threshold_seconds = 300
-  slack_channel_id                     = "C0ABCDEF12"
 }
 
-run "alarms_publish_to_topic_without_slack" {
+run "alarms_publish_to_topic" {
   command = plan
 
   module {
@@ -41,46 +37,23 @@ run "alarms_publish_to_topic_without_slack" {
     ])
     error_message = "모든 알람은 알람·복구 시 알람 SNS 토픽으로 게시해야 합니다."
   }
-
-  assert {
-    condition     = length(aws_chatbot_slack_channel_configuration.alarms) == 0 && length(aws_iam_role.chatbot) == 0
-    error_message = "워크스페이스 ID가 없으면 Chatbot 리소스를 만들지 않아야 합니다."
-  }
 }
 
-run "slack_channel_subscribes_alarm_topic" {
+run "chatbot_role_is_read_only" {
   command = plan
 
   module {
     source = "./modules/monitoring"
-  }
-
-  variables {
-    slack_workspace_id = "T0ABCDEF12"
   }
 
   assert {
     condition = (
-      aws_chatbot_slack_channel_configuration.alarms[0].region == "us-east-2" &&
-      aws_chatbot_slack_channel_configuration.alarms[0].slack_channel_id == "C0ABCDEF12" &&
-      aws_chatbot_slack_channel_configuration.alarms[0].sns_topic_arns == toset([aws_sns_topic.alarms.arn]) &&
-      aws_chatbot_slack_channel_configuration.alarms[0].guardrail_policy_arns == tolist(["arn:aws:iam::aws:policy/CloudWatchReadOnlyAccess"])
+      jsondecode(aws_iam_role.chatbot.assume_role_policy).Statement[0].Principal.Service == "chatbot.amazonaws.com" &&
+      alltrue([
+        for action in jsondecode(aws_iam_role_policy.chatbot.policy).Statement[0].Action :
+        startswith(action, "cloudwatch:Get") || startswith(action, "cloudwatch:List")
+      ])
     )
-    error_message = "Chatbot은 us-east-2에서 알람 토픽을 구독하고 읽기 전용 guardrail을 써야 합니다."
+    error_message = "Chatbot 역할은 chatbot.amazonaws.com만 맡고 CloudWatch 읽기 권한만 가져야 합니다."
   }
-}
-
-run "reject_channel_name_as_id" {
-  command = plan
-
-  module {
-    source = "./modules/monitoring"
-  }
-
-  variables {
-    slack_workspace_id = "C0ABCDEF12"
-    slack_channel_id   = "#aws-monitoring"
-  }
-
-  expect_failures = [var.slack_workspace_id, var.slack_channel_id]
 }

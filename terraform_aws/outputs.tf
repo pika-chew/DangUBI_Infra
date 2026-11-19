@@ -28,6 +28,16 @@ output "cloudwatch_alarm_names" {
   value       = module.monitoring.alarm_names
 }
 
+output "cloudwatch_alarm_topic_arn" {
+  description = "콘솔 Slack 채널 설정에서 구독할 알람 SNS 토픽 ARN"
+  value       = module.monitoring.alarm_topic_arn
+}
+
+output "chatbot_role_arn" {
+  description = "콘솔 Slack 채널 설정에서 선택할 IAM 역할 ARN"
+  value       = module.monitoring.chatbot_role_arn
+}
+
 output "ingestion_queue_url" {
   description = "프라이빗 클라우드 수집 워커가 사용할 SQS URL"
   value       = module.delivery.queue_url

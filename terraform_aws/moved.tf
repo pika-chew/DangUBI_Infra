@@ -69,3 +69,14 @@ moved {
   from = module.processing.aws_cloudwatch_log_stream.firehose
   to   = module.delivery.aws_cloudwatch_log_stream.firehose
 }
+
+# Slack 채널 설정을 콘솔로 옮기면서 Chatbot 역할을 항상 만들도록 count를 없앴습니다.
+moved {
+  from = module.monitoring.aws_iam_role.chatbot[0]
+  to   = module.monitoring.aws_iam_role.chatbot
+}
+
+moved {
+  from = module.monitoring.aws_iam_role_policy.chatbot[0]
+  to   = module.monitoring.aws_iam_role_policy.chatbot
+}

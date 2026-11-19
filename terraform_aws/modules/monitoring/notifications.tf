@@ -1,8 +1,7 @@
-locals {
-  # Chatbot API는 서울 리전 엔드포인트가 없습니다. 채널 설정은 계정 단위이며 서울 SNS 토픽을 그대로 구독합니다.
-  chatbot_region  = "us-east-2"
-  chatbot_enabled = var.slack_workspace_id != null && var.slack_channel_id != null
-}
+# CloudWatch 알람 → SNS → Amazon Q Developer in chat applications(구 AWS Chatbot) → Slack
+#
+# Slack 채널 설정은 콘솔에서 만듭니다. Terraform(API)으로는 생성 요청이 성공해도 설정이 만들어지지 않았습니다.
+# 콘솔에서 아래 토픽과 역할을 선택하고, 가드레일은 CloudWatchReadOnlyAccess로 둡니다.
 
 # CloudWatch 알람·복구 알림을 받는 토픽입니다.
 # AWS 관리형 키(alias/aws/sns)로 암호화하면 CloudWatch가 게시하지 못하므로 SSE를 두지 않습니다.
@@ -10,9 +9,8 @@ resource "aws_sns_topic" "alarms" {
   name = "${var.name_prefix}-alarms"
 }
 
+# 콘솔의 채널 설정에서 "기존 역할 사용"으로 선택하는 역할입니다.
 resource "aws_iam_role" "chatbot" {
-  count = local.chatbot_enabled ? 1 : 0
-
   name = "${var.name_prefix}-chatbot"
 
   assume_role_policy = jsonencode({
@@ -29,10 +27,8 @@ resource "aws_iam_role" "chatbot" {
 # 관리형 정책 연결(iam:AttachRolePolicy)은 Terraform CI 사용자에게 없으므로 인라인 정책을 씁니다.
 # 아래 작업은 리소스 단위 권한을 지원하지 않아 Resource를 "*"로 둡니다.
 resource "aws_iam_role_policy" "chatbot" {
-  count = local.chatbot_enabled ? 1 : 0
-
   name = "${var.name_prefix}-chatbot-notifications"
-  role = aws_iam_role.chatbot[0].id
+  role = aws_iam_role.chatbot.id
 
   policy = jsonencode({
     Version = "2012-10-17"
@@ -48,32 +44,4 @@ resource "aws_iam_role_policy" "chatbot" {
       Resource = "*"
     }]
   })
-}
-
-# Chatbot은 생성 요청을 받은 뒤 역할을 비동기로 검증합니다. 역할이 전파되기 전이면 설정이 만들어지지 않습니다.
-resource "time_sleep" "chatbot_iam_propagation" {
-  count = local.chatbot_enabled ? 1 : 0
-
-  create_duration = "30s"
-
-  triggers = {
-    role_arn          = aws_iam_role.chatbot[0].arn
-    trust_policy_hash = sha256(aws_iam_role.chatbot[0].assume_role_policy)
-    role_policy_hash  = sha256(aws_iam_role_policy.chatbot[0].policy)
-  }
-}
-
-resource "aws_chatbot_slack_channel_configuration" "alarms" {
-  count = local.chatbot_enabled ? 1 : 0
-
-  region             = local.chatbot_region
-  configuration_name = "${var.name_prefix}-aws-monitoring"
-  iam_role_arn       = time_sleep.chatbot_iam_propagation[0].triggers["role_arn"]
-  slack_team_id      = var.slack_workspace_id
-  slack_channel_id   = var.slack_channel_id
-  sns_topic_arns     = [aws_sns_topic.alarms.arn]
-  logging_level      = "ERROR"
-
-  # 기본 guardrail은 AdministratorAccess입니다. Slack에서 실행할 수 있는 명령을 읽기 전용으로 제한합니다.
-  guardrail_policy_arns = ["arn:aws:iam::aws:policy/CloudWatchReadOnlyAccess"]
 }

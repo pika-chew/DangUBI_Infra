@@ -64,8 +64,6 @@ module "monitoring" {
   dlq_name                    = module.delivery.dlq_name
   queue_age_threshold_seconds = var.sqs_age_alarm_threshold_seconds
   alarm_action_arns           = var.cloudwatch_alarm_action_arns
-  slack_workspace_id          = var.slack_workspace_id
-  slack_channel_id            = var.slack_channel_id
   processing_function_name    = module.processing.function_name
   processing_log_group_name   = module.processing.function_log_group_name
   iot_rule_name               = module.ingestion.iot_rule_name

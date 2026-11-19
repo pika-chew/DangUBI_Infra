@@ -232,9 +232,6 @@ pipeline {
             environment {
                 AWS_ACCESS_KEY_ID     = credentials('aws-terraform-access-key-id')
                 AWS_SECRET_ACCESS_KEY = credentials('aws-terraform-secret-access-key')
-                // public 레포에 올리지 않는 Slack ID (Secret text). Apply는 tfplan을 쓰므로 Plan에만 줍니다.
-                TF_VAR_slack_workspace_id = credentials('slack-workspace-id')
-                TF_VAR_slack_channel_id   = credentials('slack-channel-id')
             }
             agent {
                 docker {
