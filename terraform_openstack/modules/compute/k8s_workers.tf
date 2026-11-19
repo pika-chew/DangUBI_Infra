@@ -4,22 +4,22 @@ locals {
   k8s_workers = {
     "k8s-worker-1" = {
       availability_zone = "az-os-ctl3"
-      fixed_ip          = "172.16.10.21"
+      port_name         = "k8s-worker1-port"
       flavor_id         = var.k8s_worker_flavor_id
     }
     "k8s-worker-2" = {
       availability_zone = "az-os-ctl2"
-      fixed_ip          = "172.16.10.22"
+      port_name         = "k8s-worker2-port"
       flavor_id         = var.k8s_worker_flavor_id
     }
     "k8s-worker-3" = {
       availability_zone = "az-os-ctl1"
-      fixed_ip          = "172.16.10.23"
+      port_name         = "k8s-worker3-port"
       flavor_id         = var.k8s_worker_flavor_id
     }
     "k8s-worker-4" = {
       availability_zone = "nova"
-      fixed_ip          = "172.16.10.24"
+      port_name         = "k8s-worker4-port"
       flavor_id         = var.k8s_worker_cmp_flavor_id
     }
   }
@@ -33,11 +33,18 @@ resource "openstack_compute_instance_v2" "k8s_workers" {
   flavor_id         = each.value.flavor_id
   key_pair          = "pika1-key"
   availability_zone = each.value.availability_zone
-  security_groups   = ["sg-argocd", "sg-k8s", "sg-ssh"]
 
   network {
-    # 기존 포트와 연결된 VM을 인수한 설정입니다. port 참조로 바꾸면 교체가 계획될 수 있습니다.
-    name        = "k8s-net"
-    fixed_ip_v4 = each.value.fixed_ip
+    port = var.instance_ports[each.value.port_name].id
+  }
+
+  lifecycle {
+    # 인수한 VM의 기존 포트 연결은 MAC으로 검증하고 UUID 차이로 교체하지 않습니다.
+    ignore_changes = [network[0].port]
+
+    postcondition {
+      condition     = try(self.network[0].mac == var.instance_ports[each.value.port_name].mac_address, false)
+      error_message = "${each.key} VM의 네트워크 MAC 주소가 지정한 Neutron 포트와 다릅니다."
+    }
   }
 }

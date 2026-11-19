@@ -84,8 +84,8 @@ terraform apply lookup.tfplan
 ## UUID를 조회하는 방식
 
 - `lookups.tf`: 프로젝트·이미지·Flavor를 이름으로 조회하여 운영 설정에 전달합니다.
-- `imports.tf`: 인수할 네트워크·서브넷·포트를 조회하고, 포트의 `device_id`에서 VM UUID를 얻습니다.
-- `main.tf`, `network.tf`: 위 조회 결과를 기존 compute/network 모듈에 전달합니다.
+- `imports.tf`: 기존 Neutron 리소스를 조회하고 VM 포트의 `device_id`에서 VM UUID를 얻습니다. 보안 그룹 규칙 UUID는 인수용 파일에서 받습니다.
+- `main.tf`, `network.tf`: 조회한 프로젝트·이미지·Flavor와 관리 포트 참조를 compute/network 모듈에 전달합니다.
 - `variables.tf`: 이름 입력과 `import_existing` 스위치를 정의합니다. 기본값은 현재 환경의 이름입니다.
 
 프로젝트 기본값은 ID가 `default`인 기본 도메인의 `admin`, `ubi`입니다.
@@ -97,18 +97,24 @@ Keystone 프로젝트 조회, Glance 이미지 조회, Nova Flavor 조회 권한
 동명 리소스가 여러 개 조회되면 임의로 선택하지 않고 오류를 해결해야 합니다.
 이미지는 `most_recent=false`로 두어 같은 이름의 새 이미지를 자동 선택하지 않습니다.
 이름이 유일하더라도 기존 이미지나 Flavor와 다른 UUID를 조회하면 VM 수정·교체가 계획될 수 있으므로 plan을 확인하세요.
-프로젝트·이미지·Flavor 및 기존 보안 그룹은 조회만 하며, 해당 자원 자체를 생성하는 코드는 아닙니다.
+프로젝트·이미지·Flavor와 Neutron이 자동 생성한 `default` 보안 그룹은 `data`로 조회합니다.
+VM은 네트워크 모듈에서 관리하는 포트 UUID를 사용하며, 사용자 정의 보안 그룹은 포트에서 참조합니다.
+기존 VM의 state에 포트 UUID가 비어 있어도 연결을 교체하지 않으며, Nova가 반환한 MAC으로 연결을 검증합니다.
 
 ## 기존 리소스를 처음 인수할 때
 
 기존 state가 있는 현재 환경에서는 이 절차가 필요하지 않습니다.
 같은 리소스를 관리하는 다른 state나 CI 실행이 없는지 먼저 확인하고, 대상 리소스가 아직 등록되지 않은 경우에만 사용합니다.
+보안 그룹 규칙도 처음 등록한다면 Horizon에서 확인한 UUID를 `security-group-rules.import.tfvars`의 `security_group_rule_import_ids`에 넣습니다.
 
 ```bash
-terraform plan -var='import_existing=true' -out=import-discovered.tfplan
+terraform plan -var='import_existing=true' \
+  -var-file=security-group-rules.import.tfvars \
+  -out=import-discovered.tfplan
 ```
 
-이 모드에서는 네트워크 3개, 서브넷 3개, 포트 10개와 그 포트에 연결된 VM 10개의 UUID를 조회합니다.
+이 모드에서는 네트워크·서브넷, 라우터와 인터페이스, VM·VIP 포트, Floating IP, 사용자 정의 보안 그룹을 조회합니다.
+VM UUID는 VM 포트의 연결 정보에서, 보안 규칙 UUID는 인수용 파일에서 얻습니다.
 네트워크는 프로젝트, 서브넷은 프로젝트와 네트워크, 포트는 프로젝트와 네트워크로 조회 범위를 제한합니다.
 포트가 VM에 연결되지 않았거나 연결 VM의 이름이 예상과 다르면 계획을 중단합니다.
 누락·중복 조회나 연결 불일치를 해결하기 전에는 apply하지 마세요.
@@ -116,7 +122,7 @@ terraform plan -var='import_existing=true' -out=import-discovered.tfplan
 state가 비어 있고 모든 기존 리소스가 코드와 일치한다면 기대 결과는 다음과 같습니다.
 
 ```text
-Plan: 26 to import, 0 to add, 0 to change, 0 to destroy.
+Plan: 91 to import, 0 to add, 0 to change, 0 to destroy.
 ```
 
 부분적으로 등록된 state라면 import 개수는 미등록 리소스 수만큼 줄어듭니다.
@@ -131,4 +137,4 @@ terraform plan
 
 `import_existing=false`는 import용 조회를 끄는 옵션이며, 생성을 막는 옵션은 아닙니다.
 운영 state가 없는 폴더에서 기본 plan을 실행하면 기존 리소스와 같은 이름의 자원을 새로 생성하려고 계획할 수 있습니다.
-전체 인프라를 빈 OpenStack 환경에 재구축하는 설정도 아닙니다. 기존 프로젝트·이미지·Flavor·보안 그룹 등이 필요합니다.
+새 환경에서 실행하려면 기존 프로젝트·이미지·Flavor·Nova 키페어 등이 필요합니다.

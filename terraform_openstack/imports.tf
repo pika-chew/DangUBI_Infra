@@ -1,5 +1,11 @@
 # 이 파일도 항상 읽히지만, import_existing=false이면 아래 조회와 import 대상은 모두 비어 있습니다.
 # 기존 state의 resource 주소와 for_each 키를 유지하므로 다시 import할 필요는 없습니다.
+variable "security_group_rule_import_ids" {
+  description = "Horizon에서 확인한 보안 그룹 규칙 UUID를 그룹명/규칙명 키로 전달합니다."
+  type        = map(string)
+  default     = {}
+}
+
 locals {
   import_networks = {
     "ext-net" = "external"
@@ -10,6 +16,10 @@ locals {
     "ext-subnet" = "ext-net"
     "k8s-subnet" = "k8s-net"
     "ops-subnet" = "ops-net"
+  }
+  import_router_interfaces = {
+    "k8s-subnet" = "172.16.10.1"
+    "ops-subnet" = "172.16.20.1"
   }
   # 포트 이름과 VM 이름은 다릅니다. 포트의 device_id가 연결된 Nova VM의 UUID입니다.
   import_ports = {
@@ -43,6 +53,22 @@ data "openstack_networking_subnet_v2" "existing" {
   tenant_id  = data.openstack_identity_project_v3.projects[local.import_networks[each.value]].id
 }
 
+data "openstack_networking_router_v2" "existing" {
+  for_each = var.import_existing ? toset(["main-router"]) : toset([])
+
+  name      = each.key
+  tenant_id = data.openstack_identity_project_v3.projects["ubi"].id
+}
+
+# 인터페이스는 포트 UUID로 인수합니다. 라우터, 내부망, 게이트웨이 IP로 조회 대상을 좁힙니다.
+data "openstack_networking_port_v2" "router_interfaces" {
+  for_each = var.import_existing ? local.import_router_interfaces : {}
+
+  device_id  = data.openstack_networking_router_v2.existing["main-router"].id
+  network_id = data.openstack_networking_network_v2.existing[local.import_subnets[each.key]].id
+  fixed_ip   = each.value
+}
+
 data "openstack_networking_port_v2" "existing" {
   for_each = var.import_existing ? local.import_ports : {}
 
@@ -57,6 +83,38 @@ data "openstack_networking_port_v2" "existing" {
       error_message = "${each.key} 포트가 Nova VM에 연결되어 있지 않습니다. 연결 대상을 먼저 확인하세요."
     }
   }
+}
+
+# 예약 포트는 VM에 연결되지 않으므로 Nova VM 조회 대상에 포함하지 않습니다.
+data "openstack_networking_port_v2" "vip_ports" {
+  for_each = var.import_existing ? toset(["k8s-api-vip", "query-vip", "argo-vip"]) : toset([])
+
+  name       = each.key
+  project_id = data.openstack_identity_project_v3.projects["ubi"].id
+  network_id = data.openstack_networking_network_v2.existing["k8s-net"].id
+
+  lifecycle {
+    postcondition {
+      condition     = self.device_id == null || self.device_id == ""
+      error_message = "${each.key} 예약 포트에 장치가 연결되어 있습니다. 연결 대상을 먼저 확인하세요."
+    }
+  }
+}
+
+data "openstack_networking_floatingip_v2" "existing" {
+  for_each = var.import_existing ? module.network.floating_ip_addresses : toset([])
+
+  address   = each.key
+  tenant_id = data.openstack_identity_project_v3.projects["ubi"].id
+  # 조회에는 외부 네트워크 UUID를, 리소스의 pool에는 네트워크 이름을 사용합니다.
+  pool = data.openstack_networking_network_v2.existing["ext-net"].id
+}
+
+data "openstack_networking_secgroup_v2" "existing" {
+  for_each = var.import_existing ? module.network.security_group_names : toset([])
+
+  name      = each.key
+  tenant_id = data.openstack_identity_project_v3.projects["ubi"].id
 }
 
 # Provider 3.4의 VM 단일 조회는 이름 검색을 지원하지 않아 포트에서 얻은 UUID를 사용합니다.
@@ -86,6 +144,18 @@ import {
 }
 
 import {
+  for_each = data.openstack_networking_router_v2.existing
+  to       = module.network.openstack_networking_router_v2.main
+  id       = each.value.id
+}
+
+import {
+  for_each = data.openstack_networking_port_v2.router_interfaces
+  to       = module.network.openstack_networking_router_interface_v2.internal[each.key]
+  id       = each.value.id
+}
+
+import {
   for_each = { for name, port in local.import_ports : name => port if var.import_existing && port.network == "ops-net" }
   to       = module.network.openstack_networking_port_v2.ops_ports[each.key]
   id       = data.openstack_networking_port_v2.existing[each.key].id
@@ -95,6 +165,30 @@ import {
   for_each = { for name, port in local.import_ports : name => port if var.import_existing && port.network == "k8s-net" }
   to       = module.network.openstack_networking_port_v2.k8s_ports[each.key]
   id       = data.openstack_networking_port_v2.existing[each.key].id
+}
+
+import {
+  for_each = data.openstack_networking_port_v2.vip_ports
+  to       = module.network.openstack_networking_port_v2.vip_ports[each.key]
+  id       = each.value.id
+}
+
+import {
+  for_each = data.openstack_networking_floatingip_v2.existing
+  to       = module.network.openstack_networking_floatingip_v2.floating_ips[each.key]
+  id       = each.value.id
+}
+
+import {
+  for_each = data.openstack_networking_secgroup_v2.existing
+  to       = module.network.openstack_networking_secgroup_v2.groups[each.key]
+  id       = each.value.id
+}
+
+import {
+  for_each = var.import_existing ? var.security_group_rule_import_ids : {}
+  to       = module.network.openstack_networking_secgroup_rule_v2.rules[each.key]
+  id       = each.value
 }
 
 import {
