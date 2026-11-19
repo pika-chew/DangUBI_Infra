@@ -9,6 +9,8 @@ mock_provider "aws" {
   }
 }
 
+mock_provider "time" {}
+
 variables {
   name_prefix                          = "ubi-dev"
   aws_region                           = "ap-northeast-2"
