@@ -25,12 +25,29 @@ resource "aws_iam_role" "chatbot" {
   })
 }
 
-# 알람 메시지의 그래프를 그리는 데 필요한 읽기 권한만 줍니다.
-resource "aws_iam_role_policy_attachment" "chatbot" {
+# 알람 메시지에 지표 그래프를 붙이는 데 필요한 읽기 권한만 줍니다.
+# 관리형 정책 연결(iam:AttachRolePolicy)은 Terraform CI 사용자에게 없으므로 인라인 정책을 씁니다.
+# 아래 작업은 리소스 단위 권한을 지원하지 않아 Resource를 "*"로 둡니다.
+resource "aws_iam_role_policy" "chatbot" {
   count = local.chatbot_enabled ? 1 : 0
 
-  role       = aws_iam_role.chatbot[0].name
-  policy_arn = "arn:aws:iam::aws:policy/CloudWatchReadOnlyAccess"
+  name = "${var.name_prefix}-chatbot-notifications"
+  role = aws_iam_role.chatbot[0].id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Sid    = "RenderAlarmGraphs"
+      Effect = "Allow"
+      Action = [
+        "cloudwatch:GetMetricData",
+        "cloudwatch:GetMetricStatistics",
+        "cloudwatch:GetMetricWidgetImage",
+        "cloudwatch:ListMetrics"
+      ]
+      Resource = "*"
+    }]
+  })
 }
 
 # Chatbot은 생성 요청을 받은 뒤 역할을 비동기로 검증합니다. 역할이 전파되기 전이면 설정이 만들어지지 않습니다.
@@ -42,7 +59,7 @@ resource "time_sleep" "chatbot_iam_propagation" {
   triggers = {
     role_arn          = aws_iam_role.chatbot[0].arn
     trust_policy_hash = sha256(aws_iam_role.chatbot[0].assume_role_policy)
-    policy_arn        = aws_iam_role_policy_attachment.chatbot[0].policy_arn
+    role_policy_hash  = sha256(aws_iam_role_policy.chatbot[0].policy)
   }
 }
 
