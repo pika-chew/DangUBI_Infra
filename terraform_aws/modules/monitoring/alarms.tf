@@ -149,7 +149,7 @@ resource "aws_cloudwatch_metric_alarm" "pipeline" {
   dimensions          = each.value.dimensions
   treat_missing_data  = "notBreaching"
 
-  # 비어 있으면 콘솔 상태만 변경됩니다. 이메일·Slack 구독은 만들지 않습니다.
-  alarm_actions = var.alarm_action_arns
-  ok_actions    = var.alarm_action_arns
+  # 알람 토픽은 항상 연결합니다. Slack 전달은 Chatbot 설정이 있을 때만 이뤄집니다.
+  alarm_actions = concat([aws_sns_topic.alarms.arn], var.alarm_action_arns)
+  ok_actions    = concat([aws_sns_topic.alarms.arn], var.alarm_action_arns)
 }

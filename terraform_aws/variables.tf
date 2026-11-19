@@ -82,9 +82,23 @@ variable "sqs_age_alarm_threshold_seconds" {
 }
 
 variable "cloudwatch_alarm_action_arns" {
-  description = "기존 SNS 토픽 등 알람 대상 ARN. 기본값은 상태 표시만 하고 외부 알림은 보내지 않음"
+  description = "모니터링 모듈의 알람 SNS 토픽 외에 추가로 알림을 보낼 ARN"
   type        = list(string)
   default     = []
+}
+
+# public 레포라 Slack ID는 커밋하지 않습니다. Jenkins Plan stage에서 TF_VAR_*로 주입합니다.
+# 둘 중 하나라도 null이면 알람은 SNS 토픽까지만 전달합니다.
+variable "slack_workspace_id" {
+  description = "AWS Chatbot에 연결한 Slack 워크스페이스 ID(T로 시작). Jenkins credential slack-workspace-id"
+  type        = string
+  default     = null
+}
+
+variable "slack_channel_id" {
+  description = "CloudWatch 알람을 받을 Slack 채널 ID(C로 시작). Jenkins credential slack-channel-id"
+  type        = string
+  default     = null
 }
 
 variable "iot_device_csr_paths" {
