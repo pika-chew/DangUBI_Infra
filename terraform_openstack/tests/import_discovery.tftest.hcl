@@ -18,6 +18,8 @@ run "operation_skips_import_discovery" {
     condition = (
       length(data.openstack_networking_network_v2.existing) == 0 &&
       length(data.openstack_networking_subnet_v2.existing) == 0 &&
+      length(data.openstack_networking_router_v2.existing) == 0 &&
+      length(data.openstack_networking_port_v2.router_interfaces) == 0 &&
       length(data.openstack_networking_port_v2.existing) == 0 &&
       length(data.openstack_compute_instance_v2.existing) == 0
     )

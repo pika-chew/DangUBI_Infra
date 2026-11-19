@@ -11,6 +11,10 @@ locals {
     "k8s-subnet" = "k8s-net"
     "ops-subnet" = "ops-net"
   }
+  import_router_interfaces = {
+    "k8s-subnet" = "172.16.10.1"
+    "ops-subnet" = "172.16.20.1"
+  }
   # 포트 이름과 VM 이름은 다릅니다. 포트의 device_id가 연결된 Nova VM의 UUID입니다.
   import_ports = {
     "observability-port" = { network = "ops-net", vm_name = "observability-vm" }
@@ -41,6 +45,22 @@ data "openstack_networking_subnet_v2" "existing" {
   name       = each.key
   network_id = data.openstack_networking_network_v2.existing[each.value].id
   tenant_id  = data.openstack_identity_project_v3.projects[local.import_networks[each.value]].id
+}
+
+data "openstack_networking_router_v2" "existing" {
+  for_each = var.import_existing ? toset(["main-router"]) : toset([])
+
+  name      = each.key
+  tenant_id = data.openstack_identity_project_v3.projects["ubi"].id
+}
+
+# 인터페이스는 포트 UUID로 인수합니다. 라우터, 내부망, 게이트웨이 IP로 조회 대상을 좁힙니다.
+data "openstack_networking_port_v2" "router_interfaces" {
+  for_each = var.import_existing ? local.import_router_interfaces : {}
+
+  device_id  = data.openstack_networking_router_v2.existing["main-router"].id
+  network_id = data.openstack_networking_network_v2.existing[local.import_subnets[each.key]].id
+  fixed_ip   = each.value
 }
 
 data "openstack_networking_port_v2" "existing" {
@@ -82,6 +102,18 @@ import {
 import {
   for_each = data.openstack_networking_subnet_v2.existing
   to       = module.network.openstack_networking_subnet_v2.subnets[each.key]
+  id       = each.value.id
+}
+
+import {
+  for_each = data.openstack_networking_router_v2.existing
+  to       = module.network.openstack_networking_router_v2.main
+  id       = each.value.id
+}
+
+import {
+  for_each = data.openstack_networking_port_v2.router_interfaces
+  to       = module.network.openstack_networking_router_interface_v2.internal[each.key]
   id       = each.value.id
 }
 
