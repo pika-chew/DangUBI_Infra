@@ -1,5 +1,11 @@
 # 이 파일도 항상 읽히지만, import_existing=false이면 아래 조회와 import 대상은 모두 비어 있습니다.
 # 기존 state의 resource 주소와 for_each 키를 유지하므로 다시 import할 필요는 없습니다.
+variable "security_group_rule_import_ids" {
+  description = "Horizon에서 확인한 보안 그룹 규칙 UUID를 그룹명/규칙명 키로 전달합니다."
+  type        = map(string)
+  default     = {}
+}
+
 locals {
   import_networks = {
     "ext-net" = "external"
@@ -177,6 +183,12 @@ import {
   for_each = data.openstack_networking_secgroup_v2.existing
   to       = module.network.openstack_networking_secgroup_v2.groups[each.key]
   id       = each.value.id
+}
+
+import {
+  for_each = var.import_existing ? var.security_group_rule_import_ids : {}
+  to       = module.network.openstack_networking_secgroup_rule_v2.rules[each.key]
+  id       = each.value
 }
 
 import {
