@@ -79,6 +79,22 @@ data "openstack_networking_port_v2" "existing" {
   }
 }
 
+# 예약 포트는 VM에 연결되지 않으므로 Nova VM 조회 대상에 포함하지 않습니다.
+data "openstack_networking_port_v2" "vip_ports" {
+  for_each = var.import_existing ? toset(["k8s-api-vip", "query-vip", "argo-vip"]) : toset([])
+
+  name       = each.key
+  project_id = data.openstack_identity_project_v3.projects["ubi"].id
+  network_id = data.openstack_networking_network_v2.existing["k8s-net"].id
+
+  lifecycle {
+    postcondition {
+      condition     = self.device_id == null || self.device_id == ""
+      error_message = "${each.key} 예약 포트에 장치가 연결되어 있습니다. 연결 대상을 먼저 확인하세요."
+    }
+  }
+}
+
 # Provider 3.4의 VM 단일 조회는 이름 검색을 지원하지 않아 포트에서 얻은 UUID를 사용합니다.
 data "openstack_compute_instance_v2" "existing" {
   for_each = var.import_existing ? local.import_ports : {}
@@ -127,6 +143,12 @@ import {
   for_each = { for name, port in local.import_ports : name => port if var.import_existing && port.network == "k8s-net" }
   to       = module.network.openstack_networking_port_v2.k8s_ports[each.key]
   id       = data.openstack_networking_port_v2.existing[each.key].id
+}
+
+import {
+  for_each = data.openstack_networking_port_v2.vip_ports
+  to       = module.network.openstack_networking_port_v2.vip_ports[each.key]
+  id       = each.value.id
 }
 
 import {
