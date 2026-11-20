@@ -16,8 +16,9 @@ grafana_port: 3000
 # Alloy가 로그를 push하는 포트. 보안 그룹에서 K8s 노드·물리 노드 대역만 연다
 loki_port: 3100
 
-# 로그 보관 기간. Loki는 용량 기준 삭제가 없으므로 디스크는 NodeDiskAlmostFull 알림으로 감시한다
-loki_retention_period: 168h
+# 로그 보관 기간. Prometheus(30일)와 맞춘다. 운영 전 저장량은 약 81MB/일(압축 후)이라 30일이면 약 2.4GB
+# Loki는 용량 기준 삭제가 없으므로 디스크는 NodeDiskAlmostFull 알림으로 감시한다. 앱 운영 후 저장량을 다시 확인한다
+loki_retention_period: 720h
 
 # 기간과 용량 중 먼저 닿는 쪽으로 오래된 블록 삭제. 루트 디스크가 가득 차면 OS까지 멈추므로 용량 상한 필수
 prometheus_retention_time: 30d
