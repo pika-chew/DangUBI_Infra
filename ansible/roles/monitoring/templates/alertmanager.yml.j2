@@ -14,10 +14,18 @@ route:
   group_interval: 5m
   repeat_interval: 4h
   routes:
-    # 항상 울리는 하트비트라 Slack으로 보내면 4시간마다 의미 없는 메시지가 온다.
-    # 이후 외부 하트비트 서비스로 라우팅한다.
+    # 항상 울리는 하트비트. 외부 하트비트 서비스(Healthchecks.io)로 1분마다 보내고,
+    # 신호가 끊기면 Healthchecks.io가 알린다(Prometheus·Alertmanager·모니터링 VM 장애 감지).
+    # 핑 URL이 아직 없으면 Slack에 쌓이지 않도록 버린다.
     - matchers: ['alertname = "Watchdog"']
+{% if alertmanager_healthchecks_ping_url | length > 0 %}
+      receiver: healthchecks
+      group_wait: 0s
+      group_interval: 1m
+      repeat_interval: 1m
+{% else %}
       receiver: "null"
+{% endif %}
 
     # 사건형 알림(규칙에 type: event). "최근 N분 안에 일이 있었다"는 조건이라 시간이 지나면 저절로 풀린다.
     # 이때의 RESOLVED는 문제가 해결됐다는 뜻이 아니므로 보내지 않는다.
@@ -42,6 +50,14 @@ inhibit_rules:
 # title_link: 기본값은 내부 주소(http://alertmanager:9093)라 브라우저에서 열리지 않으므로 링크를 뺀다
 receivers:
   - name: "null"
+
+{% if alertmanager_healthchecks_ping_url | length > 0 %}
+  # Watchdog 하트비트. Healthchecks.io는 핑 URL로 오는 POST를 신호로 받는다(본문은 보지 않음)
+  - name: healthchecks
+    webhook_configs:
+      - url: "{{ alertmanager_healthchecks_ping_url }}"
+        send_resolved: false
+{% endif %}
 
   - name: slack
     slack_configs:
